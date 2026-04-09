@@ -1,0 +1,248 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+datasource db {
+  provider = "postgresql"
+  
+}
+
+
+
+
+// ─────────────────────────────────────────────
+// USERS
+// The core table. Notice: no plain-text password.
+// passwordHash is nullable because OAuth users
+// have no password — they log in via provider.
+// ─────────────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  firstName    String?
+  lastName     String?
+  avatarUrl    String?
+  isVerified   Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  // Relations
+  roles              UserRole[]
+  refreshTokens      RefreshToken[]
+  emailVerifications EmailVerification[]
+  passwordResets     PasswordReset[]
+  oauthAccounts      OAuthAccount[]
+  mfaSecret          MfaSecret?
+  mfaBackupCodes     MfaBackupCode[]
+  auditLogs          AuditLog[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// ROLES
+// Separate table — not an enum on the user row.
+// Why? So you can add new roles without a
+// schema migration. Just insert a new row.
+// ─────────────────────────────────────────────
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+// ─────────────────────────────────────────────
+// USER_ROLES — junction table
+// A user can have multiple roles (admin + user).
+// A role can belong to many users.
+// This is a proper many-to-many relationship.
+// ─────────────────────────────────────────────
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  assignedBy String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// ─────────────────────────────────────────────
+// REFRESH_TOKENS
+// We store the HASH of the token, never the
+// plain token. Why? If this table is leaked,
+// attackers can't use hashed tokens directly.
+// deviceInfo lets users see "MacBook Chrome"
+// in their active sessions list.
+// ─────────────────────────────────────────────
+model RefreshToken {
+  id         String    @id @default(uuid())
+  tokenHash  String    @unique
+  userId     String
+  deviceInfo String?
+  ipAddress  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────
+// EMAIL_VERIFICATIONS
+// Token is hashed. usedAt tracks single-use.
+// Expires in 24 hours.
+// One user can have multiple pending tokens
+// (if they request resend), so no @unique on userId.
+// ─────────────────────────────────────────────
+model EmailVerification {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verifications")
+}
+
+// ─────────────────────────────────────────────
+// PASSWORD_RESETS
+// Single-use. usedAt is set when consumed.
+// Expires in 1 hour (much shorter than email verify).
+// Why shorter? Password reset is higher risk —
+// an attacker with email access has 1 hour window.
+// ─────────────────────────────────────────────
+model PasswordReset {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_resets")
+}
+
+// ─────────────────────────────────────────────
+// OAUTH_ACCOUNTS
+// Links a user to their Google/GitHub account.
+// One user can have BOTH Google and GitHub linked.
+// providerUserId is the ID from the provider
+// (e.g. Google's "sub" field).
+// accessToken stored temporarily for profile fetch —
+// we don't use it long-term.
+// ─────────────────────────────────────────────
+model OAuthAccount {
+  id             String    @id @default(uuid())
+  userId         String
+  provider       String
+  providerUserId String
+  accessToken    String?
+  refreshToken   String?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// ─────────────────────────────────────────────
+// MFA_SECRETS
+// One secret per user (one-to-one relation).
+// secret is the TOTP base32 seed — stored
+// encrypted in production (Phase 11 hardening).
+// isEnabled is false until user completes setup.
+// ─────────────────────────────────────────────
+model MfaSecret {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  secret    String
+  isEnabled Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mfa_secrets")
+}
+
+// ─────────────────────────────────────────────
+// MFA_BACKUP_CODES
+// 10 codes generated at MFA setup.
+// codeHash stored — same rule as passwords.
+// usedAt makes each code single-use.
+// ─────────────────────────────────────────────
+model MfaBackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_backup_codes")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT_LOGS
+// Append-only. Never updated, never deleted.
+// Records every security-relevant event.
+// metadata is JSON — flexible for different
+// event types (login stores browser, role change
+// stores old/new role, etc.)
+// ─────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  event     String
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([event])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
