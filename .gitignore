@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+
+# Prisma generated client
+server/src/generated/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker volumes (if you use named local paths)
+postgres-data/
+redis-data/
