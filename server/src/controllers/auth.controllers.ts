@@ -1,14 +1,26 @@
 import { Request, Response } from 'express'
-// AuthService will be imported here in Phase 04
-// Controllers are thin — they only:
-// 1. Extract data from the request
-// 2. Call a service method
-// 3. Send the response
+import { authService } from '../services/auth.service.js'
+import type {
+  RegisterInput,
+  VerifyEmailInput,
+  ResendVerificationInput,
+} from '../validators/auth.schema.js'
 
-export class AuthController {
-  // Placeholder — filled in Phase 04
-  register(req: Request, res: Response): void {
-    res.status(501).json({ message: 'Not implemented yet' })
+class AuthController {
+  async register(req: Request, res: Response): Promise<void> {
+    const result = await authService.register(req.body as RegisterInput)
+    res.status(202).json({ success: true, ...result })
+  }
+
+  async verifyEmail(req: Request, res: Response): Promise<void> {
+    const { token } = req.query as VerifyEmailInput
+    const result = await authService.verifyEmail(token)
+    res.json({ success: true, ...result })
+  }
+
+  async resendVerification(req: Request, res: Response): Promise<void> {
+    const result = await authService.resendVerification(req.body as ResendVerificationInput)
+    res.json({ success: true, ...result })
   }
 }
 
