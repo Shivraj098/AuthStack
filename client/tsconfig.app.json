@@ -9,7 +9,7 @@
     "strict": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "baseUrl": ".",
+
     "noUncheckedIndexedAccess": true,
 
     /* Bundler mode */

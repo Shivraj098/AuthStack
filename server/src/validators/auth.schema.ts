@@ -33,6 +33,20 @@ export const resendVerificationSchema = z.object({
   email: emailField,
 })
 
+export const loginSchema = z.object({
+  email: emailField,
+  password: z.string().min(1, 'Password is required'),
+  // Don't validate password complexity on login —
+  // only on registration. Users with old passwords
+  // that don't meet new rules should still be able to log in.
+})
+
+export const refreshSchema = z.object({
+  // No body needed — refresh token comes from httpOnly cookie
+})
+
+export type LoginInput = z.infer<typeof loginSchema>
+
 // TypeScript types inferred directly from Zod schemas
 // No duplication — schema IS the type definition
 export type RegisterInput = z.infer<typeof registerSchema>

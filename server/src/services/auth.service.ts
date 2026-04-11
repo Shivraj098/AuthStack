@@ -4,9 +4,22 @@ import { emailService } from './email.service.js'
 import { generateSecureToken, hashToken, getExpiryDate, isExpired } from '../utils/token.js'
 import { AuthenticationError, AppError } from '../utils/error.js'
 import type { RegisterInput, ResendVerificationInput } from '../validators/auth.schema.js'
+import { verifyAccessToken } from '../utils/jwt.js'
+import { randomUUID } from 'crypto'
+import { redisClient } from '../config/redis.js'
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js'
+import {
+  recordFailedAttempt,
+  isLockedOut,
+  clearFailedAttempts,
+  getRemainingLockoutSeconds,
+} from '../utils/lockout.js'
+import type { LoginInput } from '../validators/auth.schema.js'
+import crypto from 'crypto'
 
 const BCRYPT_ROUNDS = 12
 const EMAIL_VERIFY_EXPIRY_HOURS = 24
+const MAX_ATTEMPTS = 5
 
 class AuthService {
   // ─── Registration ──────────────────────────────────────────────
@@ -188,6 +201,300 @@ class AuthService {
     await emailService.sendVerificationEmail(email, plain, user.firstName ?? undefined)
 
     return { message: RESEND_SAME_MESSAGE }
+  }
+
+  // ─── Login ─────────────────────────────────────────────────────
+  async login(
+    input: LoginInput,
+    meta: { ip?: string; userAgent?: string }
+  ): Promise<{
+    accessToken: string
+    refreshToken: string
+    user: { id: string; email: string; firstName: string | null; roles: string[] }
+  }> {
+    const { email, password } = input
+
+    // Check lockout FIRST — before any database query
+    // This means locked-out users don't even hit the DB
+    if (await isLockedOut(email)) {
+      const remaining = await getRemainingLockoutSeconds(email)
+      throw new AppError(
+        `Account temporarily locked. Try again in ${Math.ceil(remaining / 60)} minutes.`,
+        429,
+        'ACCOUNT_LOCKED'
+      )
+    }
+
+    // Find user — select only what we need, never select *
+    const user = await prisma.user.findUnique({
+      where: { email, deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        passwordHash: true,
+        isVerified: true,
+        isActive: true,
+        roles: {
+          select: {
+            role: { select: { name: true } },
+          },
+        },
+      },
+    })
+
+    // User not found — still do bcrypt compare to prevent timing attacks
+    // An attacker cannot distinguish "wrong email" from "wrong password"
+    // because both take the same ~250ms
+    if (!user || !user.passwordHash) {
+      await bcrypt.compare(password, '$2b$12$invalidhashplaceholderfortiming00000000000000000')
+      await recordFailedAttempt(email)
+      throw new AuthenticationError('Invalid email or password')
+    }
+
+    const passwordValid = await bcrypt.compare(password, user.passwordHash)
+
+    if (!passwordValid) {
+      const attempts = await recordFailedAttempt(email)
+      const remaining = MAX_ATTEMPTS - attempts
+
+      if (remaining <= 0) {
+        throw new AppError(
+          'Too many failed attempts. Account locked for 15 minutes.',
+          429,
+          'ACCOUNT_LOCKED'
+        )
+      }
+
+      throw new AuthenticationError(
+        `Invalid email or password. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+      )
+    }
+
+    if (!user.isVerified) {
+      throw new AuthenticationError('Please verify your email address before signing in.')
+    }
+
+    if (!user.isActive) {
+      throw new AuthenticationError('This account has been deactivated.')
+    }
+
+    // Successful login — clear failed attempts
+    await clearFailedAttempts(email)
+
+    const roles = user.roles.map((ur) => ur.role.name)
+
+    // Generate tokens
+    const accessToken = signAccessToken({
+      sub: user.id,
+      email: user.email,
+      roles,
+    })
+
+    // Each refresh token gets a unique ID that links to the DB row
+    // This is what enables "revoke this specific session"
+    const tokenId = randomUUID()
+    const refreshToken = signRefreshToken({ sub: user.id, tokenId })
+
+    // Store hashed refresh token
+    const refreshTokenHash = hashToken(refreshToken)
+
+    const expiresAt = getExpiryDate(7 * 24) // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        id: tokenId,
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        deviceInfo: meta.userAgent ?? null,
+        ipAddress: meta.ip ?? null,
+        expiresAt,
+      },
+    })
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        event: 'USER_LOGIN',
+        ipAddress: meta.ip ?? null,
+        userAgent: meta.userAgent ?? null,
+        metadata: { email },
+      },
+    })
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        roles,
+      },
+    }
+  }
+
+  // ─── Refresh Token ─────────────────────────────────────────────
+  async refresh(
+    rawRefreshToken: string,
+    meta: { ip?: string; userAgent?: string }
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    // Verify the JWT signature first — cheap operation
+    const payload = verifyRefreshToken(rawRefreshToken)
+
+    // Find the token record by its ID (from JWT payload)
+    const tokenRecord = await prisma.refreshToken.findUnique({
+      where: { id: payload.tokenId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            isActive: true,
+            isVerified: true,
+            roles: {
+              select: { role: { select: { name: true } } },
+            },
+          },
+        },
+      },
+    })
+
+    if (!tokenRecord) {
+      throw new AuthenticationError('Invalid refresh token')
+    }
+    const incomingHash = hashToken(rawRefreshToken)
+    const hashMatches =
+      incomingHash.length === tokenRecord.tokenHash.length &&
+      crypto.timingSafeEqual(Buffer.from(incomingHash), Buffer.from(tokenRecord.tokenHash))
+
+    // Verify the hash matches — ensures the token wasn't tampered with
+
+    if (!hashMatches) {
+      // Token ID exists but hash doesn't match — something very wrong
+      // Revoke all sessions for this user as a precaution
+      await this.revokeAllSessions(tokenRecord.userId)
+      throw new AuthenticationError('Token integrity check failed')
+    }
+
+    // REUSE DETECTION — the most critical check
+    // If revokedAt is set, this token was already used once.
+    // Someone is replaying a stolen token. Kill everything.
+    if (tokenRecord.revokedAt) {
+      await this.revokeAllSessions(tokenRecord.userId)
+      throw new AuthenticationError(
+        'Session invalidated due to suspicious activity. Please sign in again.'
+      )
+    }
+
+    if (tokenRecord.expiresAt < new Date()) {
+      throw new AuthenticationError('Refresh token expired. Please sign in again.')
+    }
+
+    if (!tokenRecord.user.isActive) {
+      throw new AuthenticationError('This account has been deactivated.')
+    }
+
+    if (!tokenRecord.user.isVerified) {
+      throw new AuthenticationError('Email is not verified.')
+    }
+
+    const roles = tokenRecord.user.roles.map((ur) => ur.role.name)
+
+    // Rotate: revoke old token, issue new one
+    // Both happen in a transaction — can't get a new token
+    // without the old one being revoked
+    const newTokenId = randomUUID()
+    const newRefreshToken = signRefreshToken({
+      sub: tokenRecord.user.id,
+      tokenId: newTokenId,
+    })
+    const newRefreshTokenHash = hashToken(newRefreshToken)
+    const newExpiresAt = new Date()
+    newExpiresAt.setDate(newExpiresAt.getDate() + 7)
+
+    await prisma.$transaction([
+      // Revoke old
+      prisma.refreshToken.update({
+        where: { id: tokenRecord.id },
+        data: { revokedAt: new Date() },
+      }),
+      // Create new
+      prisma.refreshToken.create({
+        data: {
+          id: newTokenId,
+          userId: tokenRecord.user.id,
+          tokenHash: newRefreshTokenHash,
+          deviceInfo: meta.userAgent ?? tokenRecord.deviceInfo,
+          ipAddress: meta.ip ?? tokenRecord.ipAddress,
+          expiresAt: newExpiresAt,
+        },
+      }),
+    ])
+
+    const newAccessToken = signAccessToken({
+      sub: tokenRecord.user.id,
+      email: tokenRecord.user.email,
+      roles,
+    })
+
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken }
+  }
+
+  // ─── Logout ────────────────────────────────────────────────────
+  async logout(refreshToken: string, accessToken?: string): Promise<void> {
+    try {
+      const payload = verifyRefreshToken(refreshToken)
+
+      await prisma.refreshToken.updateMany({
+        where: {
+          id: payload.tokenId,
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      })
+
+      // Blacklist the access token in Redis until it naturally expires
+      // Why? Access tokens are stateless — even after logout, a stolen
+      // access token would still work until it expires (15 min).
+      // The blacklist makes logout truly immediate.
+
+      if (accessToken) {
+        const accessPayload = verifyAccessToken(accessToken)
+
+        await redisClient.set(`blacklist:${accessPayload.jti}`, '1', { EX: 15 * 60 })
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          userId: payload.sub,
+          event: 'USER_LOGOUT',
+        },
+      })
+    } catch {
+      // Logout should never throw — even invalid tokens
+      // should result in a clean logout from the client's perspective
+    }
+  }
+
+  async logoutAll(userId: string): Promise<void> {
+    await this.revokeAllSessions(userId)
+
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        event: 'USER_LOGOUT_ALL',
+      },
+    })
+  }
+
+  // ─── Private helpers ───────────────────────────────────────────
+  private async revokeAllSessions(userId: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
   }
 }
 

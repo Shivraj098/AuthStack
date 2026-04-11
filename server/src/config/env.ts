@@ -8,6 +8,11 @@ const envPath = path.resolve(__dirname, '../../../.env')
 
 dotenv.config({ path: envPath })
 
+const expiresInSchema = z.union([
+  z.number(),
+  z.string().regex(/^\d+(s|m|h|d)$/), // "15m", "7d", "1h"
+])
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.string().transform(Number).pipe(z.number().min(1).max(65535)).default(3000),
@@ -18,8 +23,9 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+
+  JWT_ACCESS_EXPIRES_IN: expiresInSchema.default('15m'),
+  JWT_REFRESH_EXPIRES_IN: expiresInSchema.default('7d'),
 
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.string().transform(Number).pipe(z.number()).default(587),
