@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useWatch, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { api } from '@/lib/axios'
 import { registerSchema, type RegisterFormData } from '@/lib/schemas'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Alert'
 import { PasswordStrength } from '@/components/ui/PasswordStrength'
 import type { ApiResponse } from '@/types/auth'
+import { OAuthButtons } from '@/components/ui/OauthButtons'
 
 export function SignUp() {
   const [serverMessage, setServerMessage] = useState<string | null>(null)
@@ -18,12 +19,16 @@ export function SignUp() {
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) })
 
-  const password = watch('password', '')
+  const password = useWatch({
+    control,
+    name: 'password',
+    defaultValue: '',
+  })
 
   async function onSubmit(data: RegisterFormData) {
     setServerMessage(null)
@@ -152,6 +157,17 @@ export function SignUp() {
         <Button type="submit" loading={isSubmitting} className="w-full mt-2" size="lg">
           Create account
         </Button>
+
+        <div className="relative my-5">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-100" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-400">or continue with</span>
+          </div>
+        </div>
+
+        <OAuthButtons mode="signup" />
       </form>
     </AuthLayout>
   )

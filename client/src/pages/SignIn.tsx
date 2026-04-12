@@ -10,12 +10,16 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Alert'
 import type { ApiResponse, User } from '@/types/auth'
+import { OAuthButtons } from '@/components/ui/OauthButtons'
+import { useSearchParams } from 'react-router-dom'
 
 export function SignIn() {
   const [serverError, setServerError] = useState<string | null>(null)
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const oauthError = searchParams.get('error')
   // Add inside SignIn, after const location line:
   const successMessage = (location.state as { message?: string })?.message
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard'
@@ -58,6 +62,15 @@ export function SignIn() {
       }
     >
       {successMessage && <Alert variant="success">{successMessage}</Alert>}
+
+      {oauthError === 'oauth_denied' && (
+        <Alert variant="warning">
+          Sign in was cancelled. You can try again or use your email and password.
+        </Alert>
+      )}
+      {oauthError === 'oauth_failed' && (
+        <Alert variant="error">Something went wrong with social sign in. Please try again.</Alert>
+      )}
       <form
         onSubmit={() => {
           handleSubmit(onSubmit)
@@ -98,6 +111,17 @@ export function SignIn() {
         <Button type="submit" loading={isSubmitting} className="w-full mt-2" size="lg">
           Sign in
         </Button>
+
+        <div className="relative my-5">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-100" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-400">or continue with</span>
+          </div>
+        </div>
+
+        <OAuthButtons mode="signin" />
       </form>
     </AuthLayout>
   )

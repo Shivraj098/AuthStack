@@ -3,7 +3,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { SignUp } from '@/pages/SignUp'
 import { SignIn } from '@/pages/SignIn'
 import { Dashboard } from '@/pages/Dashboard'
-
+import { OAuthCallback } from './pages/OauthCallback'
 import { ForgotPassword } from '@/pages/ForgotPassword'
 import { ResetPassword } from '@/pages/ResetPassword'
 import { VerifyEmail } from '@/pages/VerifyEmail'
@@ -14,6 +14,7 @@ export default function App() {
       {/* Public routes */}
       <Route path="/register" element={<SignUp />} />
       <Route path="/login" element={<SignIn />} />
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
 
       {/* Protected routes — wrapped in ProtectedRoute */}
       <Route element={<ProtectedRoute />}>

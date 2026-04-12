@@ -32,6 +32,18 @@ const envSchema = z.object({
   SMTP_USER: z.string(),
   SMTP_PASS: z.string(),
 
+  SERVER_URL: z
+    .string()
+    .trim()
+    .url('SERVER_URL must be a valid URL')
+    .transform((val) => val.replace(/\/+$/, ''))
+    .default('http://localhost:3000'), // auto-remove trailing slash
+
+  GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
+  GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
+  GITHUB_CLIENT_ID: z.string().min(1, 'GITHUB_CLIENT_ID is required'),
+  GITHUB_CLIENT_SECRET: z.string().min(1, 'GITHUB_CLIENT_SECRET is required'),
+
   CLIENT_URL: z.string().url(),
 })
 
