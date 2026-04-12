@@ -9,7 +9,11 @@ import {
 } from '../validators/auth.schema.js'
 
 import { requireAuth } from '../middleware/requireAuth.js'
-import { loginSchema } from '../validators/auth.schema.js'
+import {
+  loginSchema,
+  resetPasswordSchema,
+  forgotPasswordSchema,
+} from '../validators/auth.schema.js'
 
 const router = Router()
 
@@ -82,5 +86,19 @@ router.post('/logout-all', requireAuth, authController.logoutAll.bind(authContro
  *     tags: [Authentication]
  */
 router.get('/me', requireAuth, authController.getMe.bind(authController))
+
+router.post(
+  '/forgot-password',
+  createPasswordResetLimiter(),
+  validate(forgotPasswordSchema),
+  authController.forgotPassword.bind(authController)
+)
+
+router.post(
+  '/reset-password',
+  createAuthLimiter(),
+  validate(resetPasswordSchema),
+  authController.resetPassword.bind(authController)
+)
 
 export default router

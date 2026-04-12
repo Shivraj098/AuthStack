@@ -4,6 +4,10 @@ import { SignUp } from '@/pages/SignUp'
 import { SignIn } from '@/pages/SignIn'
 import { Dashboard } from '@/pages/Dashboard'
 
+import { ForgotPassword } from '@/pages/ForgotPassword'
+import { ResetPassword } from '@/pages/ResetPassword'
+import { VerifyEmail } from '@/pages/VerifyEmail'
+
 export default function App() {
   return (
     <Routes>
@@ -20,6 +24,10 @@ export default function App() {
       <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
         <Route path="/admin" element={<div>Admin panel coming in Phase 09</div>} />
       </Route>
+
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       {/* Default redirects */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -4,6 +4,11 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { api } from '@/lib/axios'
 import { registerSchema, type RegisterFormData } from '@/lib/schemas'
+import { AuthLayout } from '@/components/ui/AuthLayout'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { Alert } from '@/components/ui/Alert'
+import { PasswordStrength } from '@/components/ui/PasswordStrength'
 import type { ApiResponse } from '@/types/auth'
 
 export function SignUp() {
@@ -13,38 +18,33 @@ export function SignUp() {
   const {
     register,
     handleSubmit,
+    watch,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
-  })
+  } = useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) })
+
+  const password = watch('password', '')
 
   async function onSubmit(data: RegisterFormData) {
     setServerMessage(null)
-
     try {
-      const response = await api.post<ApiResponse<null>>('/auth/register', {
+      const res = await api.post<ApiResponse<null>>('/auth/register', {
         email: data.email,
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
       })
-
       setIsSuccess(true)
-      setServerMessage(response.data.message ?? 'Check your email to verify your account.')
+      setServerMessage(res.data.message ?? 'Check your email.')
     } catch (err: unknown) {
-      if (isAxiosError(err) && err.response?.data) {
-        const apiError = err.response.data as ApiResponse<null>
-
-        // Map server field errors back to form fields
-        if (apiError.error?.fields) {
-          Object.entries(apiError.error.fields).forEach(([field, messages]) => {
-            setError(field as keyof RegisterFormData, {
-              message: messages[0],
-            })
-          })
+      if (isAxiosError(err)) {
+        const d = err.response?.data as ApiResponse<null>
+        if (d?.error?.fields) {
+          Object.entries(d.error.fields).forEach(([field, msgs]) =>
+            setError(field as keyof RegisterFormData, { message: msgs[0] })
+          )
         } else {
-          setServerMessage(apiError.error?.message ?? 'Something went wrong')
+          setServerMessage(d?.error?.message ?? 'Something went wrong')
         }
       }
     }
@@ -52,11 +52,11 @@ export function SignUp() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl shadow-sm text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <AuthLayout title="Check your inbox">
+        <div className="text-center py-4 space-y-4">
+          <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
             <svg
-              className="w-8 h-8 text-green-600"
+              className="w-7 h-7 text-green-600"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -64,124 +64,99 @@ export function SignUp() {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
+                strokeWidth={1.5}
+                d="M21.75 9v.906a2.25 2.25 0 01-1.183 1.981l-6.478 3.488M2.25 9v.906a2.25 2.25 0 001.183 1.981l6.478 3.488m8.839 2.51l-4.66-2.51m0 0l-1.023-.55a2.25 2.25 0 00-2.134 0l-1.022.55m0 0l-4.661 2.51m16.5 1.615a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V8.844a2.25 2.25 0 011.183-1.98l7.5-4.04a2.25 2.25 0 012.134 0l7.5 4.04a2.25 2.25 0 011.183 1.98V19.5z"
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Check your email</h2>
-          <p className="text-gray-500">{serverMessage}</p>
-          <Link to="/login" className="mt-6 inline-block text-blue-600 hover:underline text-sm">
-            Back to sign in
+          <p className="text-sm text-gray-600 leading-relaxed">{serverMessage}</p>
+          <Link
+            to="/login"
+            className="inline-block text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            Back to sign in →
           </Link>
         </div>
-      </div>
+      </AuthLayout>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl shadow-sm">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">Create an account</h1>
-        <p className="text-sm text-gray-500 mb-8">
+    <AuthLayout
+      title="Create your account"
+      subtitle={
+        <>
           Already have one?{' '}
-          <Link to="/login" className="text-blue-600 hover:underline">
+          <Link to="/login" className="text-gray-900 font-medium hover:underline">
             Sign in
           </Link>
-        </p>
+        </>
+      }
+    >
+      <form
+        onSubmit={() => {
+          handleSubmit(onSubmit)
+        }}
+        noValidate
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            {...register('firstName')}
+            label="First name"
+            placeholder="Jane"
+            error={errors.firstName?.message}
+            autoComplete="given-name"
+          />
+          <Input
+            {...register('lastName')}
+            label="Last name"
+            placeholder="Doe"
+            error={errors.lastName?.message}
+            autoComplete="family-name"
+          />
+        </div>
 
-        <form
-          onSubmit={() => {
-            handleSubmit(onSubmit)
-          }}
-          noValidate
-          className="space-y-4"
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
-              <input
-                {...register('firstName')}
-                type="text"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Jane"
-              />
-              {errors.firstName && (
-                <p className="mt-1 text-xs text-red-600">{errors.firstName.message}</p>
-              )}
-            </div>
+        <Input
+          {...register('email')}
+          type="email"
+          label="Email"
+          placeholder="jane@example.com"
+          error={errors.email?.message}
+          autoComplete="email"
+        />
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
-              <input
-                {...register('lastName')}
-                type="text"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Doe"
-              />
-              {errors.lastName && (
-                <p className="mt-1 text-xs text-red-600">{errors.lastName.message}</p>
-              )}
-            </div>
-          </div>
+        <div>
+          <Input
+            {...register('password')}
+            type="password"
+            label="Password"
+            placeholder="Create a strong password"
+            error={errors.password?.message}
+            autoComplete="new-password"
+          />
+          <PasswordStrength password={password} />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
-            <input
-              {...register('email')}
-              type="email"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="jane@example.com"
-            />
-            {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
-          </div>
+        <Input
+          {...register('confirmPassword')}
+          type="password"
+          label="Confirm password"
+          placeholder="Repeat your password"
+          error={errors.confirmPassword?.message}
+          autoComplete="new-password"
+        />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              {...register('password')}
-              type="password"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Min. 8 characters"
-            />
-            {errors.password && (
-              <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
-            )}
-          </div>
+        {serverMessage && <Alert variant="error">{serverMessage}</Alert>}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
-            <input
-              {...register('confirmPassword')}
-              type="password"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Repeat your password"
-            />
-            {errors.confirmPassword && (
-              <p className="mt-1 text-xs text-red-600">{errors.confirmPassword.message}</p>
-            )}
-          </div>
-
-          {serverMessage && !isSuccess && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{serverMessage}</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-2.5 px-4 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSubmitting ? 'Creating account...' : 'Create account'}
-          </button>
-        </form>
-      </div>
-    </div>
+        <Button type="submit" loading={isSubmitting} className="w-full mt-2" size="lg">
+          Create account
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }
 
-// Type guard for Axios errors
-function isAxiosError(error: unknown): error is { response?: { data: unknown } } {
-  return typeof error === 'object' && error !== null && 'response' in error
+function isAxiosError(e: unknown): e is { response?: { data: unknown } } {
+  return typeof e === 'object' && e !== null && 'response' in e
 }

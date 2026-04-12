@@ -335,6 +335,106 @@ class AuthService {
     }
   }
 
+  // ─── Forgot Password ───────────────────────────────────────────
+  async forgotPassword(email: string): Promise<void> {
+    const EXPIRY_HOURS = 1
+
+    const user = await prisma.user.findUnique({
+      where: { email, deletedAt: null },
+      select: { id: true, firstName: true, passwordHash: true },
+    })
+
+    // Always take the same code path to prevent timing-based
+    // enumeration — attacker cannot distinguish existing from
+    // non-existing email by measuring response time
+    if (!user || !user.passwordHash) {
+      // Artificial delay to match the token generation + DB write time
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      return
+    }
+
+    // Invalidate all existing unused reset tokens for this user
+    // Only one valid reset token at a time
+    await prisma.passwordReset.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    })
+
+    const { plain, hash } = generateSecureToken()
+
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash: hash,
+        expiresAt: getExpiryDate(EXPIRY_HOURS),
+      },
+    })
+
+    await emailService.sendPasswordResetEmail(email, plain, user.firstName ?? undefined)
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        event: 'PASSWORD_RESET_REQUESTED',
+        metadata: { email },
+      },
+    })
+  }
+
+  // ─── Reset Password ────────────────────────────────────────────
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const tokenHash = hashToken(token)
+
+    const resetRecord = await prisma.passwordReset.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: { id: true, email: true },
+        },
+      },
+    })
+
+    if (!resetRecord) {
+      throw new AuthenticationError('Invalid or expired reset token')
+    }
+
+    if (resetRecord.usedAt) {
+      throw new AuthenticationError('This reset link has already been used')
+    }
+
+    if (isExpired(resetRecord.expiresAt)) {
+      throw new AuthenticationError('This reset link has expired')
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
+
+    // Atomic transaction — token marked used AND password updated together
+    // If anything fails mid-way, both roll back
+    // Also revokes ALL active sessions — attacker sessions die immediately
+    await prisma.$transaction([
+      prisma.passwordReset.update({
+        where: { id: resetRecord.id },
+        data: { usedAt: new Date() },
+      }),
+      prisma.user.update({
+        where: { id: resetRecord.user.id },
+        data: { passwordHash: newPasswordHash },
+      }),
+      prisma.refreshToken.updateMany({
+        where: { userId: resetRecord.user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ])
+
+    await prisma.auditLog.create({
+      data: {
+        userId: resetRecord.user.id,
+        event: 'PASSWORD_RESET_COMPLETED',
+        metadata: { email: resetRecord.user.email },
+      },
+    })
+  }
+
   // ─── Refresh Token ─────────────────────────────────────────────
   async refresh(
     rawRefreshToken: string,

@@ -10,6 +10,7 @@ import type { LoginInput } from '../validators/auth.schema.js'
 import { AuthenticationError, NotFoundError } from '../utils/error.js'
 import { env } from '../config/env.js'
 import { prisma } from '../config/database.js'
+import { ForgotPasswordInput, ResetPasswordInput } from '../validators/auth.schema.js'
 
 class AuthController {
   async register(req: Request, res: Response): Promise<void> {
@@ -135,6 +136,25 @@ class AuthController {
         ...user,
         roles: user.roles.map((ur) => ur.role.name),
       },
+    })
+  }
+
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    const { email } = req.body as ForgotPasswordInput
+    // Always 200 — never reveal if email exists
+    await authService.forgotPassword(email)
+    res.json({
+      success: true,
+      message: 'If that email is registered, a reset link has been sent.',
+    })
+  }
+
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    const { token, password } = req.body as ResetPasswordInput
+    await authService.resetPassword(token, password)
+    res.json({
+      success: true,
+      message: 'Password reset successfully. Please sign in with your new password.',
     })
   }
 }

@@ -45,6 +45,24 @@ export const refreshSchema = z.object({
   // No body needed — refresh token comes from httpOnly cookie
 })
 
+export const forgotPasswordSchema = z.object({
+  email: emailField,
+})
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, 'Token is required'),
+    password: passwordField,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
+
 export type LoginInput = z.infer<typeof loginSchema>
 
 // TypeScript types inferred directly from Zod schemas
