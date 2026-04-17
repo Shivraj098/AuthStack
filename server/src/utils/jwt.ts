@@ -33,6 +33,7 @@ const accessTokenSchema = z.object({
   roles: z.array(z.string()),
   type: z.literal('access'),
   jti: z.string(),
+  tokenId: z.string().optional(),
 })
 
 const refreshTokenSchema = z.object({
@@ -57,12 +58,13 @@ export function signAccessToken(payload: Omit<AccessTokenPayload, 'type' | 'jti'
       audience: 'auth-app-client',
       algorithm: 'HS256',
       jwtid: crypto.randomUUID(),
+
       subject: payload.sub,
     } as jwt.SignOptions // ← This assertion is the cleanest & safest solution
   )
 }
 
-export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type'>): string {
+export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type' | 'jti'>): string {
   return jwt.sign({ ...payload, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
     issuer: 'auth-app',

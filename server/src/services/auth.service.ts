@@ -293,12 +293,14 @@ class AuthService {
 
     // Each refresh token gets a unique ID that links to the DB row
     // This is what enables "revoke this specific session"
-    const tokenId = randomUUID()
-    const refreshToken = signRefreshToken({ sub: user.id, tokenId })
+    const refreshToken = signRefreshToken({
+      sub: user.id,
+      tokenId: randomUUID(),
+    })
 
     // Store hashed refresh token
     const refreshTokenHash = hashToken(refreshToken)
-
+    const tokenId = randomUUID()
     const expiresAt = getExpiryDate(7 * 24) // 7 days
 
     await prisma.refreshToken.create({

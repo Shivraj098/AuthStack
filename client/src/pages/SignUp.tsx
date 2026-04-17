@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Alert'
 import { PasswordStrength } from '@/components/ui/PasswordStrength'
 import type { ApiResponse } from '@/types/auth'
-import { OAuthButtons } from '@/components/ui/OauthButtons'
+import { OAuthButtons } from '@/components/ui/OAuthButtons'
 
 export function SignUp() {
   const [serverMessage, setServerMessage] = useState<string | null>(null)
