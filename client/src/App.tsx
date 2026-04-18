@@ -7,6 +7,8 @@ import { OAuthCallback } from './pages/OauthCallback'
 import { ForgotPassword } from '@/pages/ForgotPassword'
 import { ResetPassword } from '@/pages/ResetPassword'
 import { VerifyEmail } from '@/pages/VerifyEmail'
+import { AdminPanel } from './pages/AdminPanel'
+import { AccountSettings } from '@/pages/AccountSettings'
 
 export default function App() {
   return (
@@ -15,21 +17,22 @@ export default function App() {
       <Route path="/register" element={<SignUp />} />
       <Route path="/login" element={<SignIn />} />
       <Route path="/oauth/callback" element={<OAuthCallback />} />
-
       {/* Protected routes — wrapped in ProtectedRoute */}
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />
       </Route>
-
+      {/* Add account settings*/}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/account" element={<AccountSettings />} />
+      </Route>
       {/* Admin only example — ready for Phase 09 */}
       <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
-        <Route path="/admin" element={<div>Admin panel coming in Phase 09</div>} />
+        <Route path="/admin" element={<AdminPanel />} />
       </Route>
-
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
-
       {/* Default redirects */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route

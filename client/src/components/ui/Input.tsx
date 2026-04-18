@@ -36,7 +36,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         />
         {error && (
           <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
-            <svg className="w-3 h-3 shrink" viewBox="0 0 12 12" fill="currentColor">
+            <svg className="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor">
               <path d="M6 1a5 5 0 100 10A5 5 0 006 1zm-.75 2.75a.75.75 0 011.5 0v2.5a.75.75 0 01-1.5 0v-2.5zm.75 5.5a.75.75 0 110-1.5.75.75 0 010 1.5z" />
             </svg>
             {error}

@@ -86,11 +86,17 @@ class AuthService {
       // Send email OUTSIDE the transaction
       // Why? If the email fails, we don't want to roll back the
       // user creation. The user can request a resend.
-      await emailService.sendVerificationEmail(
-        email,
-        user.verificationToken,
-        user.newUser.firstName ?? undefined
-      )
+      try {
+        await emailService.sendVerificationEmail(
+          email,
+          user.verificationToken,
+          user.newUser.firstName ?? undefined
+        )
+      } catch (error) {
+        // Email sending failed, but user registration succeeded
+        // User can request a resend verification email
+        console.error('Verification email failed to send:', error)
+      }
 
       // Audit log
       await prisma.auditLog.create({
@@ -285,22 +291,25 @@ class AuthService {
     const roles = user.roles.map((ur) => ur.role.name)
 
     // Generate tokens
+    const tokenId = randomUUID()
     const accessToken = signAccessToken({
       sub: user.id,
       email: user.email,
       roles,
+      tokenId,
     })
 
     // Each refresh token gets a unique ID that links to the DB row
     // This is what enables "revoke this specific session"
+
     const refreshToken = signRefreshToken({
       sub: user.id,
-      tokenId: randomUUID(),
+      tokenId,
     })
 
     // Store hashed refresh token
     const refreshTokenHash = hashToken(refreshToken)
-    const tokenId = randomUUID()
+
     const expiresAt = getExpiryDate(7 * 24) // 7 days
 
     await prisma.refreshToken.create({
@@ -342,7 +351,7 @@ class AuthService {
     const EXPIRY_HOURS = 1
 
     const user = await prisma.user.findUnique({
-      where: { email, deletedAt: null },
+      where: { email },
       select: { id: true, firstName: true, passwordHash: true },
     })
 
@@ -539,6 +548,7 @@ class AuthService {
       sub: tokenRecord.user.id,
       email: tokenRecord.user.email,
       roles,
+      tokenId: newTokenId,
     })
 
     return { accessToken: newAccessToken, refreshToken: newRefreshToken }

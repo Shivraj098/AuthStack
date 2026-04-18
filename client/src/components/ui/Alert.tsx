@@ -58,7 +58,12 @@ export function Alert({ variant, children, className }: AlertProps) {
         className
       )}
     >
-      <svg className="w-4 h-4 mt-0.5 shrink" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg
+        className="w-4 h-4 mt-0.5 shrink-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
         {icons[variant]}
       </svg>
       <div>{children}</div>

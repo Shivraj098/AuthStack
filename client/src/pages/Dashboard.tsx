@@ -1,5 +1,6 @@
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/Button'
+import { Link } from 'react-router-dom'
 
 export function Dashboard() {
   const { user, logout } = useAuth()
@@ -37,6 +38,23 @@ export function Dashboard() {
             <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs font-medium">
               {initials}
             </div>
+
+            <Link
+              to="/account"
+              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Settings
+            </Link>
+
+            {user?.roles?.includes('admin') && (
+              <Link
+                to="/admin"
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Admin
+              </Link>
+            )}
+
             <Button variant="ghost" size="sm" onClick={() => void logout()}>
               Sign out
             </Button>
@@ -65,7 +83,7 @@ export function Dashboard() {
             },
             {
               label: 'Roles',
-              value: user?.roles.join(', '),
+              value: user?.roles?.join(', '),
               badge: null,
             },
             {
@@ -107,7 +125,7 @@ export function Dashboard() {
               'All requests use HTTPS with security headers',
             ].map((text) => (
               <div key={text} className="flex items-start gap-3">
-                <div className="w-5 h-5 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div className="w-5 h-5 rounded-full bg-green-50 flex items-center justify-center shrink-0 mt-0.5">
                   <svg className="w-3 h-3 text-green-600" viewBox="0 0 12 12" fill="currentColor">
                     <path
                       fillRule="evenodd"

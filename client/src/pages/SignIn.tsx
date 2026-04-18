@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Alert'
 import type { ApiResponse, User } from '@/types/auth'
-import { OAuthButtons } from '@/components/ui/OAuthButtons'
+import { OAuthButtons } from '@/components/ui/OauthButtons'
 import { useSearchParams } from 'react-router-dom'
 
 export function SignIn() {

@@ -14,6 +14,7 @@ export interface AccessTokenPayload {
   email: string
   roles: string[]
   type: 'access'
+  tokenId: string
   jti: string
 }
 
@@ -32,8 +33,8 @@ const accessTokenSchema = z.object({
   email: z.string().email(),
   roles: z.array(z.string()),
   type: z.literal('access'),
+  tokenId: z.string(),
   jti: z.string(),
-  tokenId: z.string().optional(),
 })
 
 const refreshTokenSchema = z.object({
@@ -49,22 +50,22 @@ const refreshTokenSchema = z.object({
 // ==============================
 
 export function signAccessToken(payload: Omit<AccessTokenPayload, 'type' | 'jti'>): string {
+  const jti = crypto.randomUUID()
   return jwt.sign(
-    { ...payload, type: 'access' },
+    { ...payload, type: 'access', jti },
     env.JWT_ACCESS_SECRET,
     {
       expiresIn: env.JWT_ACCESS_EXPIRES_IN, // string like "15m", "1h", "7d"
       issuer: 'auth-app',
       audience: 'auth-app-client',
       algorithm: 'HS256',
-      jwtid: crypto.randomUUID(),
 
       subject: payload.sub,
-    } as jwt.SignOptions // ← This assertion is the cleanest & safest solution
+    } as jwt.SignOptions // This assertion is the cleanest & safest solution
   )
 }
 
-export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type' | 'jti'>): string {
+export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type'>): string {
   return jwt.sign({ ...payload, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
     issuer: 'auth-app',

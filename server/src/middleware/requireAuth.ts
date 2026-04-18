@@ -26,10 +26,14 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   const payload = verifyAccessToken(token) // Throws if invalid
 
   // Check blacklist — catches tokens from logged-out sessions
-  const blacklisted = await redisClient.get(`blacklist:${payload.jti}`)
+  try {
+    const blacklisted = await redisClient.get(`blacklist:${payload.jti}`)
 
-  if (blacklisted) {
-    return next(new AuthenticationError('Token has been revoked'))
+    if (blacklisted) {
+      return next(new AuthenticationError('Token has been revoked'))
+    }
+  } catch {
+    return next(new AuthenticationError('Auth service unavailable'))
   }
 
   req.user = payload

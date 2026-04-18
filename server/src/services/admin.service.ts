@@ -5,7 +5,6 @@ interface PaginationParams {
   page: number
   limit: number
   search?: string | undefined
-  userId?: string | undefined
 }
 
 class AdminService {
@@ -245,8 +244,7 @@ class AdminService {
   }
 
   // ─── Get audit logs ────────────────────────────────────────────
-  async getAuditLogs(params: PaginationParams & { userId?: string }) {
-    const { page, limit, userId } = params
+  async getAuditLogs({ page, limit, userId }: { page: number; limit: number; userId?: string }) {
     const skip = (page - 1) * limit
 
     const where = userId ? { userId } : {}
