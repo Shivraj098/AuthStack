@@ -157,6 +157,7 @@ class OAuthService {
       sub: user.id,
       email: user.email,
       roles,
+      tokenId,
     })
     const refreshToken = signRefreshToken({ sub: user.id, tokenId })
 

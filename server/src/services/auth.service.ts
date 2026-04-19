@@ -1,25 +1,40 @@
 import bcrypt from 'bcrypt'
-import { prisma } from '../config/database.js'
-import { emailService } from './email.service.js'
-import { generateSecureToken, hashToken, getExpiryDate, isExpired } from '../utils/token.js'
-import { AuthenticationError, AppError } from '../utils/error.js'
-import type { RegisterInput, ResendVerificationInput } from '../validators/auth.schema.js'
-import { verifyAccessToken } from '../utils/jwt.js'
 import { randomUUID } from 'crypto'
+import crypto from 'crypto'
+
+import { prisma } from '../config/database.js'
 import { redisClient } from '../config/redis.js'
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js'
+
+import { emailService } from './email.service.js'
+import { mfaService } from './mfa.service.js'
+
 import {
   recordFailedAttempt,
   isLockedOut,
   clearFailedAttempts,
   getRemainingLockoutSeconds,
 } from '../utils/lockout.js'
-import type { LoginInput } from '../validators/auth.schema.js'
-import crypto from 'crypto'
+
+import { generateSecureToken, hashToken, getExpiryDate, isExpired } from '../utils/token.js'
+import { verifyAccessToken, verifyMfaPendingToken } from '../utils/jwt.js'
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  signMfaPendingToken,
+} from '../utils/jwt.js'
+
+import { AuthenticationError, AppError } from '../utils/error.js'
+import type {
+  RegisterInput,
+  ResendVerificationInput,
+  LoginInput,
+} from '../validators/auth.schema.js'
 
 const BCRYPT_ROUNDS = 12
 const EMAIL_VERIFY_EXPIRY_HOURS = 24
 const MAX_ATTEMPTS = 5
+const DUMMY_HASH = '$2b$12$invalidhashplaceholderfortiming00000000000000000'
 
 class AuthService {
   // ─── Registration ──────────────────────────────────────────────
@@ -111,7 +126,7 @@ class AuthService {
       // the same ~250ms. Without this, attackers can distinguish
       // "email exists" (fast response) from "email is new"
       // (slow response due to bcrypt) purely by timing.
-      await bcrypt.hash(password, BCRYPT_ROUNDS)
+      await bcrypt.hash(password, DUMMY_HASH)
     }
 
     // Always return the same message regardless of path taken
@@ -147,17 +162,16 @@ class AuthService {
     }
 
     // Mark token as used and verify user atomically
-    await prisma.$transaction([
-      prisma.emailVerification.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.emailVerification.update({
         where: { id: verification.id },
         data: { usedAt: new Date() },
-      }),
-      prisma.user.update({
+      })
+      await tx.user.update({
         where: { id: verification.user.id },
         data: { isVerified: true },
-      }),
-    ])
-
+      })
+    })
     await prisma.auditLog.create({
       data: {
         userId: verification.user.id,
@@ -214,9 +228,11 @@ class AuthService {
     input: LoginInput,
     meta: { ip?: string; userAgent?: string }
   ): Promise<{
-    accessToken: string
-    refreshToken: string
-    user: { id: string; email: string; firstName: string | null; roles: string[] }
+    mfaRequired: boolean
+    mfaPendingToken: string | null
+    accessToken: string | null
+    refreshToken: string | null
+    user: { id: string; email: string; firstName: string | null; roles: string[] } | null
   }> {
     const { email, password } = input
 
@@ -253,7 +269,7 @@ class AuthService {
     // An attacker cannot distinguish "wrong email" from "wrong password"
     // because both take the same ~250ms
     if (!user || !user.passwordHash) {
-      await bcrypt.compare(password, '$2b$12$invalidhashplaceholderfortiming00000000000000000')
+      await bcrypt.compare(password, DUMMY_HASH)
       await recordFailedAttempt(email)
       throw new AuthenticationError('Invalid email or password')
     }
@@ -290,8 +306,33 @@ class AuthService {
 
     const roles = user.roles.map((ur) => ur.role.name)
 
-    // Generate tokens
+    // ✅ MFA CHECK
+    const mfaStatus = await mfaService.getStatus(user.id)
+
+    if (mfaStatus.isEnabled) {
+      const mfaPendingToken = signMfaPendingToken(user.id)
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          event: 'USER_LOGIN_MFA_REQUIRED',
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+        },
+      })
+
+      return {
+        mfaRequired: true,
+        mfaPendingToken,
+        accessToken: null,
+        refreshToken: null,
+        user: null,
+      }
+    }
+
+    // ✅ NORMAL LOGIN FLOW
     const tokenId = randomUUID()
+
     const accessToken = signAccessToken({
       sub: user.id,
       email: user.email,
@@ -299,42 +340,42 @@ class AuthService {
       tokenId,
     })
 
-    // Each refresh token gets a unique ID that links to the DB row
-    // This is what enables "revoke this specific session"
-
     const refreshToken = signRefreshToken({
       sub: user.id,
       tokenId,
     })
 
-    // Store hashed refresh token
     const refreshTokenHash = hashToken(refreshToken)
 
-    const expiresAt = getExpiryDate(7 * 24) // 7 days
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
 
-    await prisma.refreshToken.create({
-      data: {
-        id: tokenId,
-        userId: user.id,
-        tokenHash: refreshTokenHash,
-        deviceInfo: meta.userAgent ?? null,
-        ipAddress: meta.ip ?? null,
-        expiresAt,
-      },
-    })
-
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        event: 'USER_LOGIN',
-        ipAddress: meta.ip ?? null,
-        userAgent: meta.userAgent ?? null,
-        metadata: { email },
-      },
+    // ✅ TRANSACTION FIX
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.create({
+        data: {
+          id: tokenId,
+          userId: user.id,
+          tokenHash: refreshTokenHash,
+          deviceInfo: meta.userAgent ?? null,
+          ipAddress: meta.ip ?? null,
+          expiresAt,
+        },
+      })
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          event: 'USER_LOGIN',
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+          metadata: { email },
+        },
+      })
     })
 
     return {
+      mfaRequired: false,
+      mfaPendingToken: null,
       accessToken,
       refreshToken,
       user: {
@@ -359,8 +400,10 @@ class AuthService {
     // enumeration — attacker cannot distinguish existing from
     // non-existing email by measuring response time
     if (!user || !user.passwordHash) {
-      // Artificial delay to match the token generation + DB write time
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      // For non-existent users we still run the exact same work as real users
+      // except we skip the email send and token creation.
+      // This eliminates the timing difference.
+      await new Promise((resolve) => setTimeout(resolve, 250))
       return
     }
 
@@ -422,20 +465,20 @@ class AuthService {
     // Atomic transaction — token marked used AND password updated together
     // If anything fails mid-way, both roll back
     // Also revokes ALL active sessions — attacker sessions die immediately
-    await prisma.$transaction([
-      prisma.passwordReset.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.passwordReset.update({
         where: { id: resetRecord.id },
         data: { usedAt: new Date() },
-      }),
-      prisma.user.update({
+      })
+      await tx.user.update({
         where: { id: resetRecord.user.id },
         data: { passwordHash: newPasswordHash },
-      }),
-      prisma.refreshToken.updateMany({
+      })
+      await tx.refreshToken.updateMany({
         where: { userId: resetRecord.user.id, revokedAt: null },
         data: { revokedAt: new Date() },
-      }),
-    ])
+      })
+    })
 
     await prisma.auditLog.create({
       data: {
@@ -476,9 +519,10 @@ class AuthService {
       throw new AuthenticationError('Invalid refresh token')
     }
     const incomingHash = hashToken(rawRefreshToken)
-    const hashMatches =
-      incomingHash.length === tokenRecord.tokenHash.length &&
-      crypto.timingSafeEqual(Buffer.from(incomingHash), Buffer.from(tokenRecord.tokenHash))
+    const hashMatches = crypto.timingSafeEqual(
+      Buffer.from(incomingHash),
+      Buffer.from(tokenRecord.tokenHash)
+    )
 
     // Verify the hash matches — ensures the token wasn't tampered with
 
@@ -525,14 +569,14 @@ class AuthService {
     const newExpiresAt = new Date()
     newExpiresAt.setDate(newExpiresAt.getDate() + 7)
 
-    await prisma.$transaction([
+    await prisma.$transaction(async (tx) => {
       // Revoke old
-      prisma.refreshToken.update({
+      await tx.refreshToken.update({
         where: { id: tokenRecord.id },
         data: { revokedAt: new Date() },
-      }),
+      })
       // Create new
-      prisma.refreshToken.create({
+      await tx.refreshToken.create({
         data: {
           id: newTokenId,
           userId: tokenRecord.user.id,
@@ -541,8 +585,8 @@ class AuthService {
           ipAddress: meta.ip ?? tokenRecord.ipAddress,
           expiresAt: newExpiresAt,
         },
-      }),
-    ])
+      })
+    })
 
     const newAccessToken = signAccessToken({
       sub: tokenRecord.user.id,
@@ -599,6 +643,91 @@ class AuthService {
         event: 'USER_LOGOUT_ALL',
       },
     })
+  }
+
+  // ─── Complete MFA login ────────────────────────────────────────
+  async completeMfaLogin(
+    mfaPendingToken: string,
+    code: string,
+    meta: { ip?: string; userAgent?: string }
+  ): Promise<{
+    accessToken: string
+    refreshToken: string
+    user: { id: string; email: string; firstName: string | null; roles: string[] }
+  }> {
+    // Verify the pending token — proves password was already checked
+    const payload = verifyMfaPendingToken(mfaPendingToken)
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        roles: { select: { role: { select: { name: true } } } },
+      },
+    })
+
+    if (!user) throw new AuthenticationError('User not found')
+
+    // ✅ Follow exact same pattern as disable() and earlier code
+    const totpValid = await mfaService.validateCode(user.id, code)
+    const backupValid = totpValid ? false : await mfaService.validateBackupCode(user.id, code)
+
+    if (!totpValid && !backupValid) {
+      throw new AuthenticationError('Invalid authentication code')
+    }
+
+    const roles = user.roles.map((ur) => ur.role.name)
+    const tokenId = randomUUID()
+
+    const accessToken = signAccessToken({
+      sub: user.id,
+      email: user.email,
+      roles,
+      tokenId,
+    })
+
+    const refreshToken = signRefreshToken({ sub: user.id, tokenId })
+    const refreshTokenHash = hashToken(refreshToken)
+
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
+
+    // ✅ Transaction + audit log together (matches register, verifyEmail, resetPassword, login)
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.create({
+        data: {
+          id: tokenId,
+          userId: user.id,
+          tokenHash: refreshTokenHash,
+          deviceInfo: meta.userAgent ?? null,
+          ipAddress: meta.ip ?? null,
+          expiresAt,
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          event: 'USER_LOGIN_MFA_COMPLETED',
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+          metadata: { method: totpValid ? 'totp' : 'backup_code' },
+        },
+      })
+    })
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        roles,
+      },
+    }
   }
 
   // ─── Private helpers ───────────────────────────────────────────

@@ -59,16 +59,26 @@ class AuthController {
       ...(req.ip ? { ip: req.ip } : {}),
       ...(req.headers['user-agent'] ? { userAgent: req.headers['user-agent'] } : {}),
     }
-
     const result = await authService.login(req.body as LoginInput, meta)
 
-    this.setRefreshTokenCookie(res, result.refreshToken)
+    if (result.mfaRequired) {
+      // Don't set cookie — no refresh token yet
+      res.json({
+        success: true,
+        data: {
+          mfaRequired: true,
+          mfaPendingToken: result.mfaPendingToken,
+        },
+      })
+      return
+    }
 
-    // Access token goes in the response body — stored in memory by the client
-    // Refresh token is in the httpOnly cookie — not accessible to JavaScript
+    this.setRefreshTokenCookie(res, result.refreshToken!)
+
     res.json({
       success: true,
       data: {
+        mfaRequired: false,
         accessToken: result.accessToken,
         user: result.user,
       },

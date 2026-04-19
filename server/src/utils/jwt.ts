@@ -140,3 +140,34 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
     throw new AuthenticationError('Token verification failed')
   }
 }
+
+export interface MfaPendingTokenPayload {
+  sub: string
+  type: 'mfa_pending'
+}
+
+export function signMfaPendingToken(userId: string): string {
+  return jwt.sign({ sub: userId, type: 'mfa_pending' }, env.JWT_ACCESS_SECRET, {
+    expiresIn: '5m', // 5 minutes to complete MFA
+    issuer: 'auth-app',
+    audience: 'auth-app-client',
+  })
+}
+
+export function verifyMfaPendingToken(token: string): MfaPendingTokenPayload {
+  try {
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+      issuer: 'auth-app',
+      audience: 'auth-app-client',
+    }) as MfaPendingTokenPayload
+
+    if (payload.type !== 'mfa_pending') {
+      throw new AuthenticationError('Invalid token type')
+    }
+
+    return payload
+  } catch (err) {
+    if (err instanceof AuthenticationError) throw err
+    throw new AuthenticationError('Invalid or expired MFA session')
+  }
+}

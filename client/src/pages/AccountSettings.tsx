@@ -46,6 +46,10 @@ export function AccountSettings() {
   const [revoking, setRevoking] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [mfaStatus, setMfaStatus] = useState<{
+    isEnabled: boolean
+    backupCodesRemaining: number
+  } | null>(null)
 
   const {
     register,
@@ -67,6 +71,10 @@ export function AccountSettings() {
   }
 
   useEffect(() => {
+    api
+      .get<ApiResponse<{ isEnabled: boolean; backupCodesRemaining: number }>>('/auth/mfa/status')
+      .then((res) => setMfaStatus(res.data.data!))
+      .catch(() => {})
     void fetchSessions()
   }, [])
 
@@ -235,6 +243,50 @@ export function AccountSettings() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* MFA settings */}
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Two-factor authentication</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {mfaStatus?.isEnabled
+                  ? `Enabled · ${mfaStatus.backupCodesRemaining} backup codes remaining`
+                  : 'Add an extra layer of security to your account.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 ml-4">
+              {mfaStatus?.isEnabled ? (
+                <span className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1 rounded-full font-medium">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  Enabled
+                </span>
+              ) : (
+                <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
+                  Disabled
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {mfaStatus?.isEnabled ? (
+              <Link to="/mfa/disable">
+                <Button variant="secondary" size="sm">
+                  Disable 2FA
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/mfa/setup">
+                <Button variant="primary" size="sm">
+                  Enable 2FA
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Change password */}

@@ -33,11 +33,33 @@ export function SignIn() {
   async function onSubmit(data: LoginFormData) {
     setServerError(null)
     try {
-      const res = await api.post<ApiResponse<{ accessToken: string; user: User }>>(
-        '/auth/login',
-        data
-      )
-      login(res.data.data!.accessToken, res.data.data!.user)
+      const res = await api.post<
+        ApiResponse<{
+          mfaRequired: boolean
+          mfaPendingToken?: string
+          accessToken?: string
+          user?: User
+        }>
+      >('/auth/login', data)
+
+      const responseData = res.data.data
+
+      if (!responseData) {
+        setServerError('Invalid email or password')
+        return
+      }
+
+      if (responseData.mfaRequired) {
+        // Navigate to MFA page, passing the pending token via state
+        // State is not visible in the URL — more secure than query params
+        void navigate('/mfa', {
+          state: { mfaPendingToken: responseData.mfaPendingToken },
+          replace: true,
+        })
+        return
+      }
+
+      login(responseData.accessToken!, responseData.user!)
       void navigate(from, { replace: true })
     } catch (err: unknown) {
       if (isAxiosError(err)) {
