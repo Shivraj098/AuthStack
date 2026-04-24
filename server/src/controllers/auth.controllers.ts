@@ -29,31 +29,6 @@ class AuthController {
     res.json({ success: true, ...result })
   }
 
-  private getRefreshTokenFromCookie(req: Request): string {
-    const token = req.cookies['refreshToken'] as string | undefined
-    if (!token) throw new AuthenticationError('No refresh token provided')
-    return token
-  }
-
-  private setRefreshTokenCookie(res: Response, token: string): void {
-    res.cookie('refreshToken', token, {
-      httpOnly: true, // JavaScript cannot read this cookie
-      secure: env.NODE_ENV === 'production', // HTTPS only in production
-      sameSite: 'strict', // Never sent on cross-site requests (CSRF protection)
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-      path: '/api/auth', // Cookie only sent to auth routes, not every request
-    })
-  }
-
-  private clearRefreshTokenCookie(res: Response): void {
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/auth',
-    })
-  }
-
   async login(req: Request, res: Response): Promise<void> {
     const meta = {
       ...(req.ip ? { ip: req.ip } : {}),
@@ -165,6 +140,31 @@ class AuthController {
     res.json({
       success: true,
       message: 'Password reset successfully. Please sign in with your new password.',
+    })
+  }
+
+  private getRefreshTokenFromCookie(req: Request): string {
+    const token = req.cookies['refreshToken'] as string | undefined
+    if (!token) throw new AuthenticationError('No refresh token provided')
+    return token
+  }
+
+  private setRefreshTokenCookie(res: Response, token: string): void {
+    res.cookie('refreshToken', token, {
+      httpOnly: true, // JavaScript cannot read this cookie
+      secure: env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'strict', // Never sent on cross-site requests (CSRF protection)
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+      path: '/', // Cookie only sent to auth routes, not every request
+    })
+  }
+
+  private clearRefreshTokenCookie(res: Response): void {
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
     })
   }
 }

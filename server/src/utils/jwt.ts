@@ -10,12 +10,12 @@ import { AuthenticationError } from '../utils/error.js'
 // ==============================
 
 export interface AccessTokenPayload {
-  sub: string
+  sub: string // User ID (standard JWT claim)
   email: string
   roles: string[]
   type: 'access'
   tokenId: string
-  jti: string
+  jti: string // JWT ID for revocation/blacklisting
 }
 
 export interface RefreshTokenPayload {
@@ -51,27 +51,28 @@ const refreshTokenSchema = z.object({
 
 export function signAccessToken(payload: Omit<AccessTokenPayload, 'type' | 'jti'>): string {
   const jti = crypto.randomUUID()
+
+  const fullPayload: AccessTokenPayload = { ...payload, type: 'access', jti }
+
   return jwt.sign(
-    { ...payload, type: 'access', jti },
+    fullPayload,
     env.JWT_ACCESS_SECRET,
     {
       expiresIn: env.JWT_ACCESS_EXPIRES_IN, // string like "15m", "1h", "7d"
       issuer: 'auth-app',
       audience: 'auth-app-client',
       algorithm: 'HS256',
-
-      subject: payload.sub,
     } as jwt.SignOptions // This assertion is the cleanest & safest solution
   )
 }
 
 export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type'>): string {
-  return jwt.sign({ ...payload, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
+  const fullPayload = { ...payload, type: 'refresh' }
+  return jwt.sign(fullPayload, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
     issuer: 'auth-app',
     audience: 'auth-app-client',
     algorithm: 'HS256',
-    subject: payload.sub,
     jwtid: crypto.randomUUID(), // Always include a unique ID for refresh tokens (useful for rotation and revocation)
   } as jwt.SignOptions)
 }

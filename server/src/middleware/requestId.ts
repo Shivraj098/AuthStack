@@ -11,6 +11,11 @@ declare global {
 }
 
 export function requestIdMiddleware(req: Request, _res: Response, next: NextFunction): void {
-  req.id = randomUUID()
+  const id = randomUUID()
+
+  req.id = id
+
+  _res.setHeader('x-request-id', id)
+
   next()
 }

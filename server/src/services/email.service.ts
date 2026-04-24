@@ -8,11 +8,22 @@ class EmailService {
     this.transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
+      secure: false, // true for 465, false for other ports
       auth: {
         user: env.SMTP_USER,
         pass: env.SMTP_PASS,
       },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+
+    console.log('SMTP CONFIG:')
+    console.log({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS ? 'EXISTS' : 'MISSING',
     })
   }
 

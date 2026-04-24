@@ -1,5 +1,4 @@
 import bcrypt from 'bcrypt'
-import { randomUUID } from 'crypto'
 import crypto from 'crypto'
 
 import { prisma } from '../config/database.js'
@@ -331,7 +330,7 @@ class AuthService {
     }
 
     // ✅ NORMAL LOGIN FLOW
-    const tokenId = randomUUID()
+    const tokenId = crypto.randomUUID()
 
     const accessToken = signAccessToken({
       sub: user.id,
@@ -560,7 +559,7 @@ class AuthService {
     // Rotate: revoke old token, issue new one
     // Both happen in a transaction — can't get a new token
     // without the old one being revoked
-    const newTokenId = randomUUID()
+    const newTokenId = crypto.randomUUID()
     const newRefreshToken = signRefreshToken({
       sub: tokenRecord.user.id,
       tokenId: newTokenId,
@@ -679,7 +678,7 @@ class AuthService {
     }
 
     const roles = user.roles.map((ur) => ur.role.name)
-    const tokenId = randomUUID()
+    const tokenId = crypto.randomUUID()
 
     const accessToken = signAccessToken({
       sub: user.id,

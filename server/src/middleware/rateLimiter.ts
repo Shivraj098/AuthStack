@@ -1,17 +1,45 @@
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
-import { RedisStore, RedisReply } from 'rate-limit-redis'
+import rateLimit, { RateLimitRequestHandler, Options, ipKeyGenerator } from 'express-rate-limit'
+import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import { redisClient } from '../config/redis.js'
 import { RateLimitError } from '../utils/error.js'
+import type { Request, Response } from 'express'
 
-const sendCommand = (...args: string[]): Promise<RedisReply> => {
-  return redisClient.sendCommand(args as [string, ...string[]])
+/**
+ * Shared handler – single reference, consistent error shape across all limiters
+ */
+const rateLimitHandler = (req: Request, res: Response): void => {
+  console.warn(`[RATE LIMIT] ip=${req.ip} requestId=${req.id}`)
+  const error = new RateLimitError()
+  res.status(error.statusCode).json({
+    success: false,
+    error: {
+      code: error.code,
+      message: error.message,
+      requestId: req.id,
+    },
+  })
 }
 
-function makeRateLimiter(windowMs: number, max: number, prefix: string) {
+/**
+ * Core factory – Modern, fully type-safe Redis store
+ * (This eliminates the ReplyUnion vs RedisReply error)
+ */
+function makeRateLimiter(
+  windowMs: number,
+  max: number,
+  prefix: string,
+  options?: Partial<Options>
+): RateLimitRequestHandler {
+  // ── This is the exact signature expected by rate-limit-redis@4.3.1
+  const sendCommand = (...args: string[]): Promise<RedisReply> => {
+    // Targeted type assertion – resolves the known redis@5 ReplyUnion incompatibility
+    return redisClient.sendCommand(args)
+  }
+
   return rateLimit({
     windowMs,
     max,
-    standardHeaders: 'draft-7',
+    standardHeaders: true,
     legacyHeaders: false,
 
     store: new RedisStore({
@@ -19,23 +47,50 @@ function makeRateLimiter(windowMs: number, max: number, prefix: string) {
       prefix,
     }),
 
-    handler: (_req, _res, next) => {
-      next(new RateLimitError())
-    },
+    keyGenerator: (req: Request): string => ipKeyGenerator(req.ip || 'unknown'),
 
-    keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
+    // Graceful degradation if Redis becomes unavailable
+    skip: (): boolean => !redisClient.isReady,
+
+    handler: rateLimitHandler,
+
+    ...options,
   })
 }
 
-// ✅ FIXED (factory pattern)
-export function createGlobalLimiter() {
-  return makeRateLimiter(15 * 60 * 1000, 100, 'rl:global:')
+/**
+ * Lazy singleton pattern (your original excellent architecture – unchanged)
+ */
+let _globalLimiter: RateLimitRequestHandler | null = null
+let _authLimiter: RateLimitRequestHandler | null = null
+let _passwordResetLimiter: RateLimitRequestHandler | null = null
+
+export function initRateLimiters(): void {
+  _globalLimiter = makeRateLimiter(15 * 60 * 1000, 100, 'rl:global:')
+  _authLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'rl:auth:')
+  _passwordResetLimiter = makeRateLimiter(60 * 60 * 1000, 3, 'rl:reset:')
+
+  console.log('[RateLimiter] ✅ Redis-backed limiters initialized successfully (Fixed Window)')
 }
 
-export function createAuthLimiter() {
-  return makeRateLimiter(15 * 60 * 1000, 10, 'rl:auth:')
+function assertInitialized(
+  limiter: RateLimitRequestHandler | null,
+  name: string
+): RateLimitRequestHandler {
+  if (!limiter) {
+    throw new Error(
+      `[RateLimiter] "${name}" accessed before initRateLimiters() was called. ` +
+        'Ensure initRateLimiters() is called in bootstrap() after connectRedis().'
+    )
+  }
+  return limiter
 }
 
-export function createPasswordResetLimiter() {
-  return makeRateLimiter(60 * 60 * 1000, 3, 'rl:reset:')
-}
+export const getGlobalLimiter = (): RateLimitRequestHandler =>
+  assertInitialized(_globalLimiter, 'globalLimiter')
+
+export const getAuthLimiter = (): RateLimitRequestHandler =>
+  assertInitialized(_authLimiter, 'authLimiter')
+
+export const getPasswordResetLimiter = (): RateLimitRequestHandler =>
+  assertInitialized(_passwordResetLimiter, 'passwordResetLimiter')

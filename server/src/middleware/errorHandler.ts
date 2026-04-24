@@ -10,20 +10,29 @@ interface ErrorResponse {
     message: string
     fields?: Record<string, string[]>
     requestId: string
-    stack?: string // ✅ moved here (optional always)
+    stack?: string
   }
 }
 
-export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
-  const requestId = req.id ?? 'unknown' // ✅ safety fallback
+/**
+ * Type guard for the plain validation error thrown by your validate middleware.
+ * This is the reliable, instanceof-free way to catch it (avoids the original ZodError problem).
+ */
+const isPlainValidationError = (
+  err: unknown
+): err is { code: 'VALIDATION_ERROR'; fields?: Record<string, string[]> } => {
+  return err != null && typeof err === 'object' && 'code' in err && err.code === 'VALIDATION_ERROR'
+}
 
-  // Zod validation errors
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
+  const requestId = req.id ?? 'unknown'
+
+  // 1. Raw ZodError (kept for any other places that might still throw it)
   if (err instanceof ZodError) {
     const fields: Record<string, string[]> = {}
 
     err.issues.forEach((e) => {
-      // ✅ use .issues (Zod v4 safe)
-      const path = e.path.join('.')
+      const path = e.path.join('.') || 'general'
       if (!fields[path]) fields[path] = []
       fields[path].push(e.message)
     })
@@ -41,7 +50,22 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return
   }
 
-  // AppError handling
+  // 2. Plain validation error from validate.ts middleware ← THIS WAS MISSING
+  if (isPlainValidationError(err)) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        fields: err.fields ?? {},
+        requestId,
+      },
+    } satisfies ErrorResponse)
+
+    return
+  }
+
+  // 3. AppError / ValidationError (your custom error classes)
   if (err instanceof AppError) {
     const response: ErrorResponse = {
       success: false,
@@ -65,7 +89,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return
   }
 
-  // Unknown error
+  // 4. Unknown / unhandled error
   console.error('UNHANDLED ERROR:', err)
 
   res.status(500).json({

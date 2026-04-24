@@ -1,10 +1,11 @@
 import { Router } from 'express'
 import { oauthController } from '../controllers/oauth.controllers.js'
-import { createGlobalLimiter } from '../middleware/rateLimiter.js'
+import { getGlobalLimiter } from '../middleware/rateLimiter.js'
 
 const router = Router()
+const globalLimiter = getGlobalLimiter()
 
-router.use(createGlobalLimiter())
+router.use(globalLimiter)
 
 // Initiates OAuth flow — redirects to provider
 router.get('/:provider', oauthController.authorize.bind(oauthController))
