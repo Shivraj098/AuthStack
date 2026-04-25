@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import { ZodError } from 'zod'
 import { AppError, ValidationError } from '../utils/error.js'
 import { env } from '../config/env.js'
+import { logger } from '../config/logger.js'
 
 interface ErrorResponse {
   success: false
@@ -82,7 +83,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     }
 
     if (!err.isOperational && err instanceof Error) {
-      console.error('NON-OPERATIONAL ERROR:', err)
+      logger.error({ err }, 'Non-operational error')
     }
 
     res.status(err.statusCode).json(response)
@@ -90,7 +91,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
 
   // 4. Unknown / unhandled error
-  console.error('UNHANDLED ERROR:', err)
+  logger.error({ err }, 'Unhandled error')
 
   res.status(500).json({
     success: false,

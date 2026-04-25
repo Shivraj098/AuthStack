@@ -10,6 +10,8 @@ import { requestIdMiddleware } from './middleware/requestId.js'
 import { initRateLimiters, getGlobalLimiter } from './middleware/rateLimiter.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { swaggerSpec } from './config/swagger.js'
+import { requestLogger } from './middleware/requestLogger.js'
+import { logger } from './config/logger.js'
 
 const app = express()
 
@@ -36,6 +38,9 @@ if (env.NODE_ENV === 'production') {
 // 2. REQUEST TRACING
 // ======================
 app.use(requestIdMiddleware)
+
+// Request logging
+app.use(requestLogger)
 
 // ======================
 // 3. BODY PARSING
@@ -89,8 +94,7 @@ async function bootstrap(): Promise<void> {
   // Must happen before routes are imported — route files call getAuthLimiter()
   // and getPasswordResetLimiter() at the top level when the module loads.
   initRateLimiters()
-  console.log('[Bootstrap] Rate limiters ready')
-
+  logger.info('Rate limiters ready')
   // ── Step 3: Import routes (safe now — Redis connected, limiters initialized) ─
   // Dynamic import defers module evaluation to this point, guaranteeing that
   // all route-level limiter accessors find initialized instances.
@@ -121,34 +125,33 @@ async function bootstrap(): Promise<void> {
 
   // ── Step 8: Start server ────────────────────────────────────────────────────
   const server = app.listen(env.PORT, () => {
-    console.log(`[Server] Running on port ${env.PORT} in ${env.NODE_ENV} mode`)
-    console.log(`[Server] API docs: http://localhost:${env.PORT}/api/docs`)
+    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Server running')
+    logger.info({ url: `http://localhost:${env.PORT}/api/docs` }, 'API docs available')
   })
 
   // ── Step 9: Graceful shutdown ───────────────────────────────────────────────
   // Ensures in-flight requests finish, and connections are closed cleanly
   // before the process exits. Critical for zero-downtime deploys (PM2, K8s).
   const shutdown = (signal: string): void => {
-    console.log(`[Server] ${signal} received. Shutting down gracefully...`)
-
+    logger.info({ signal }, 'Shutdown signal received')
     const cleanup = async (): Promise<void> => {
       await Promise.allSettled([prisma.$disconnect(), disconnectRedis()])
-      console.log('[Server] All connections closed. Exiting.')
+      logger.info('All connections closed')
       process.exit(0)
     }
 
     server.close((err) => {
       if (err) {
-        console.error('[Server] Error closing HTTP server:', err)
+        logger.error({ err }, 'Error closing HTTP server')
         process.exit(1)
       }
 
-      console.log('[Server] HTTP server closed')
+      logger.info('HTTP server closed')
       void cleanup()
     })
     // Force-kill if graceful shutdown exceeds 10s (prevents hanging in prod)
     setTimeout(() => {
-      console.error('[Server] Graceful shutdown timed out. Forcing exit.')
+      logger.error('Graceful shutdown timed out')
       process.exit(1)
     }, 10_000)
   }
@@ -161,7 +164,7 @@ async function bootstrap(): Promise<void> {
 // 6. RUN
 // ======================
 bootstrap().catch((err) => {
-  console.error('[Server] Failed to start:', err)
+  logger.fatal({ err }, 'Failed to start server')
   process.exit(1)
 })
 

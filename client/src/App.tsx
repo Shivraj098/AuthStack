@@ -11,6 +11,8 @@ import { AdminPanel } from './pages/AdminPanel'
 import { AccountSettings } from '@/pages/AccountSettings'
 import { MfaVerify } from './pages/MfaVerify'
 import { MfaSetup } from './pages/MfaSetup'
+import { AuditLogs } from './pages/AuditLogs'
+import { ActivityLog } from './pages/ActivityLog'
 
 export default function App() {
   return (
@@ -24,6 +26,9 @@ export default function App() {
       {/* Protected routes — wrapped in ProtectedRoute */}
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/account" element={<AccountSettings />} />
+        <Route path="/activity" element={<ActivityLog />} />
+        <Route path="/mfa/setup" element={<MfaSetup />} />
       </Route>
       {/* Add account settings*/}
       <Route element={<ProtectedRoute />}>
@@ -33,7 +38,10 @@ export default function App() {
       {/* Admin only example — ready for Phase 09 */}
       <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
         <Route path="/admin" element={<AdminPanel />} />
+
+        <Route path="/admin/audit-logs" element={<AuditLogs />} />
       </Route>
+
       {/* MFA setup page */}
       <Route element={<ProtectedRoute />}>
         <Route path="/mfa/setup" element={<MfaSetup />} />

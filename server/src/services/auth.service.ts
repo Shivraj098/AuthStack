@@ -29,6 +29,7 @@ import type {
   ResendVerificationInput,
   LoginInput,
 } from '../validators/auth.schema.js'
+import { logger } from '../config/logger.js'
 
 const BCRYPT_ROUNDS = 12
 const EMAIL_VERIFY_EXPIRY_HOURS = 24
@@ -109,7 +110,7 @@ class AuthService {
       } catch (error) {
         // Email sending failed, but user registration succeeded
         // User can request a resend verification email
-        console.error('Verification email failed to send:', error)
+        logger.error({ err: error }, 'Verification email failed')
       }
 
       // Audit log

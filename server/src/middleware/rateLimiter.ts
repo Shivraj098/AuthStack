@@ -3,12 +3,13 @@ import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import { redisClient } from '../config/redis.js'
 import { RateLimitError } from '../utils/error.js'
 import type { Request, Response } from 'express'
+import { logger } from '../config/logger.js'
 
 /**
  * Shared handler – single reference, consistent error shape across all limiters
  */
 const rateLimitHandler = (req: Request, res: Response): void => {
-  console.warn(`[RATE LIMIT] ip=${req.ip} requestId=${req.id}`)
+  logger.warn({ ip: req.ip, requestId: req.id }, 'Rate limit exceeded')
   const error = new RateLimitError()
   res.status(error.statusCode).json({
     success: false,
@@ -70,7 +71,7 @@ export function initRateLimiters(): void {
   _authLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'rl:auth:')
   _passwordResetLimiter = makeRateLimiter(60 * 60 * 1000, 3, 'rl:reset:')
 
-  console.log('[RateLimiter] ✅ Redis-backed limiters initialized successfully (Fixed Window)')
+  logger.info('Rate limiter initialized (Redis, Fixed Window)')
 }
 
 function assertInitialized(

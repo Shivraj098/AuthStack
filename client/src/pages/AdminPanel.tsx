@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { Alert } from '@/components/ui/Alert'
 import type { ApiResponse } from '@/types/auth'
+import { useToast } from '@/components/ui/Toast'
 
 interface AdminUser {
   id: string
@@ -32,6 +33,7 @@ interface PaginatedUsers {
 const ALL_ROLES = ['admin', 'moderator', 'user']
 
 export function AdminPanel() {
+  const { toast } = useToast()
   const { user: currentUser } = useAuth()
   const [data, setData] = useState<PaginatedUsers | null>(null)
   const [page, setPage] = useState(1)
@@ -39,54 +41,72 @@ export function AdminPanel() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: '15',
-        ...(search && { search }),
-      })
-      const res = await api.get<ApiResponse<PaginatedUsers>>(`/admin/users?${params}`)
-      setData(res.data.data!)
-    } catch {
-      setError('Failed to load users')
-    }
-  }, [page, search])
+  async function fetchUsersApi(page: number, search: string) {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: '15',
+      ...(search && { search }),
+    })
+
+    return await api.get<ApiResponse<PaginatedUsers>>(`/admin/users?${params}`)
+  }
 
   useEffect(() => {
-    void fetchUsers()
-  }, [fetchUsers])
-
-  async function handleRoleToggle(userId: string, role: string, hasRole: boolean) {
-    setActionLoading(`${userId}-${role}`)
-    try {
-      if (hasRole) {
-        await api.delete(`/admin/users/${userId}/roles`, { data: { role } })
-      } else {
-        await api.post(`/admin/users/${userId}/roles`, { role })
+    async function load() {
+      try {
+        const result = await fetchUsersApi(page, search)
+        setData(result.data.data!)
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          setError(error.message)
+        } else {
+          setError('Failed to load users')
+        }
       }
-      await fetchUsers()
-    } catch (err: unknown) {
-      if (isAxiosError(err)) {
-        const d = err.response?.data as ApiResponse<null>
-        setError(d?.error?.message ?? 'Action failed')
-      }
-    } finally {
-      setActionLoading(null)
     }
-  }
 
-  async function handleToggleActive(userId: string) {
-    setActionLoading(`active-${userId}`)
-    try {
-      await api.patch(`/admin/users/${userId}/toggle-active`)
-      await fetchUsers()
-    } catch {
-      setError('Failed to update user status')
-    } finally {
-      setActionLoading(null)
-    }
-  }
+    void load()
+  }, [page, search])
+
+  const handleRoleToggle = useCallback(
+    async (userId: string, role: string, hasRole: boolean) => {
+      setActionLoading(`${userId}-${role}`)
+      try {
+        if (hasRole) {
+          await api.delete(`/admin/users/${userId}/roles`, { data: { role } })
+        } else {
+          await api.post(`/admin/users/${userId}/roles`, { role })
+        }
+        toast(`Role ${hasRole ? 'removed' : 'assigned'} successfully`, 'success')
+        await fetchUsersApi(page, search)
+      } catch (err: unknown) {
+        if (isAxiosError(err)) {
+          const d = err.response?.data as ApiResponse<null>
+          setError(d?.error?.message ?? 'Action failed')
+          toast(d?.error?.message ?? 'Action failed', 'error')
+        }
+      } finally {
+        setActionLoading(null)
+      }
+    },
+    [toast, fetchUsersApi]
+  )
+
+  const handleToggleActive = useCallback(
+    async (userId: string) => {
+      setActionLoading(`active-${userId}`)
+      try {
+        await api.patch(`/admin/users/${userId}/toggle-active`)
+        toast('User status updated', 'success')
+        await fetchUsersApi(page, search)
+      } catch {
+        setError('Failed to update user status')
+      } finally {
+        setActionLoading(null)
+      }
+    },
+    [toast, fetchUsersApi]
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -323,7 +343,6 @@ export function AdminPanel() {
     </div>
   )
 }
-
 function isAxiosError(e: unknown): e is { response?: { data: unknown } } {
   return typeof e === 'object' && e !== null && 'response' in e
 }

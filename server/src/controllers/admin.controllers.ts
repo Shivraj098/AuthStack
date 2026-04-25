@@ -107,17 +107,27 @@ class AdminController {
   }
 
   async getAuditLogs(req: Request, res: Response): Promise<void> {
-    const query = paginationSchema.parse(req.query)
-    const userId = req.query['userId'] as string | undefined
-    try {
-      const result = await adminService.getAuditLogs({ ...query, ...(userId && { userId }) })
-      res.json({ success: true, data: result })
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      })
-    }
+    const {
+      page = '1',
+      limit = '25',
+      userId,
+      event,
+      startDate,
+      endDate,
+      ip,
+    } = req.query as Record<string, string | undefined>
+
+    const result = await adminService.getAuditLogs({
+      page: Number(page),
+      limit: Math.min(Number(limit), 100),
+      ...(userId !== undefined && { userId }),
+      ...(event !== undefined && { event }),
+      ...(startDate !== undefined && { startDate }),
+      ...(endDate !== undefined && { endDate }),
+      ...(ip !== undefined && { ip }),
+    })
+
+    res.json({ success: true, data: result })
   }
 
   async listRoles(req: Request, res: Response): Promise<void> {

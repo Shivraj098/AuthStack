@@ -244,10 +244,35 @@ class AdminService {
   }
 
   // ─── Get audit logs ────────────────────────────────────────────
-  async getAuditLogs({ page, limit, userId }: { page: number; limit: number; userId?: string }) {
+  async getAuditLogs(params: {
+    page: number
+    limit: number
+    userId?: string
+    event?: string
+    startDate?: string
+    endDate?: string
+    ip?: string
+  }) {
+    const { page, limit, userId, event, startDate, endDate, ip } = params
     const skip = (page - 1) * limit
 
-    const where = userId ? { userId } : {}
+    const where: Record<string, unknown> = {}
+
+    if (userId) where['userId'] = userId
+    if (ip) where['ipAddress'] = { contains: ip }
+
+    // Event filter supports partial match
+    // e.g. "LOGIN" matches USER_LOGIN, USER_LOGIN_MFA_REQUIRED, etc.
+    if (event) {
+      where['event'] = { contains: event, mode: 'insensitive' }
+    }
+
+    if (startDate || endDate) {
+      where['createdAt'] = {
+        ...(startDate ? { gte: new Date(startDate) } : {}),
+        ...(endDate ? { lte: new Date(endDate) } : {}),
+      }
+    }
 
     const [total, logs] = await Promise.all([
       prisma.auditLog.count({ where }),
@@ -264,7 +289,12 @@ class AdminService {
           metadata: true,
           createdAt: true,
           user: {
-            select: { email: true, firstName: true },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
           },
         },
       }),
@@ -277,6 +307,8 @@ class AdminService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
       },
     }
   }

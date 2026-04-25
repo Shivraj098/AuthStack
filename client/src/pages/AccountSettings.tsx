@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '@/lib/axios'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { Alert } from '@/components/ui/Alert'
 import { PasswordStrength } from '@/components/ui/PasswordStrength'
 import type { ApiResponse } from '@/types/auth'
+import { useToast } from '@/components/ui/Toast'
 
 interface Session {
   id: string
@@ -39,6 +40,7 @@ const changePasswordSchema = z
 type ChangePasswordForm = z.infer<typeof changePasswordSchema>
 
 export function AccountSettings() {
+  const { toast } = useToast()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
@@ -54,13 +56,16 @@ export function AccountSettings() {
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<ChangePasswordForm>({ resolver: zodResolver(changePasswordSchema) })
 
-  const newPassword = watch('newPassword', '')
-
+  const newPassword = useWatch({
+    control,
+    name: 'newPassword',
+    defaultValue: '',
+  })
   async function fetchSessions() {
     try {
       const res = await api.get<ApiResponse<Session[]>>('/account/sessions')
@@ -82,7 +87,10 @@ export function AccountSettings() {
     setRevoking(sessionId)
     try {
       await api.delete(`/account/sessions/${sessionId}`)
+      toast('Session revoked successfully', 'success')
       await fetchSessions()
+    } catch {
+      toast('Failed to revoke session', 'error')
     } finally {
       setRevoking(null)
     }
@@ -92,8 +100,11 @@ export function AccountSettings() {
     setRevoking('all')
     try {
       await api.delete('/account/sessions')
+      toast('All other sessions have been revoked', 'success')
       // After revoking all other sessions, the current one still works
       await fetchSessions()
+    } catch {
+      toast('Failed to revoke sessions', 'error')
     } finally {
       setRevoking(null)
     }
@@ -107,6 +118,7 @@ export function AccountSettings() {
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       })
+      toast('Password changed successfully', 'success')
       setPasswordSuccess(true)
       reset()
       // All sessions revoked — force re-login
@@ -243,6 +255,23 @@ export function AccountSettings() {
               ))}
             </div>
           )}
+        </div>
+
+        {/*Activity Links*/}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Account activity</h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Full history of security events on your account.
+              </p>
+            </div>
+            <Link to="/activity">
+              <Button variant="secondary" size="sm">
+                View activity
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* MFA settings */}

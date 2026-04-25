@@ -1,18 +1,17 @@
 import { createClient, RedisClientType } from 'redis'
 import { env } from './env.js'
+import { logger } from './logger.js'
 
 export const redisClient = createClient({
   url: env.REDIS_URL,
   socket: {
     reconnectStrategy: (retries: number): number | Error => {
       if (retries > 10) {
-        console.error('[Redis] Maximum reconnection attempts reached. Stopping retries.')
+        logger.error('Redis: maximum reconnection attempts reached')
         return new Error('Maximum reconnection attempts reached')
       }
       const delay = Math.min(retries * 100, 3000) // Exponential backoff with a max delay of 3 seconds
-      console.warn(
-        `[Redis] Connection lost. Attempting to reconnect in ${delay}ms... (Attempt ${retries})`
-      )
+      logger.warn({ retries, delay }, 'Redis connection lost, attempting reconnect')
       return delay
     },
     connectTimeout: 10_000, // 10 seconds
@@ -20,15 +19,16 @@ export const redisClient = createClient({
 }) as RedisClientType
 
 // ─── Lifecycle events ─────────────────────────────────────────────────────────
-redisClient.on('connect', () => console.log('[Redis] Connection established'))
-redisClient.on('ready', () => console.log('[Redis] Client ready'))
-redisClient.on('reconnecting', () => console.warn('[Redis] Reconnecting...'))
-redisClient.on('error', (err: Error) => console.error('[Redis] Error:', err.message))
-redisClient.on('end', () => console.warn('[Redis] Connection closed'))
+redisClient.on('connect', () => logger.info('Redis connection established'))
+redisClient.on('ready', () => logger.info('Redis client ready'))
+redisClient.on('reconnecting', () => logger.warn('Redis reconnecting'))
+redisClient.on('error', (err: Error) => logger.error({ err }, 'Redis error'))
+
+redisClient.on('end', () => logger.warn('Redis connection closed'))
 
 export async function connectRedis(): Promise<void> {
   if (redisClient.isOpen) {
-    console.log('[Redis] Client is already connected')
+    logger.info('Redis client already connected')
     return
   }
   await redisClient.connect()
@@ -38,6 +38,6 @@ export async function connectRedis(): Promise<void> {
 export async function disconnectRedis(): Promise<void> {
   if (redisClient.isOpen) {
     await redisClient.quit()
-    console.log('[Redis] Disconnected cleanly')
+    logger.info('Redis disconnected cleanly')
   }
 }

@@ -17,14 +17,6 @@ class EmailService {
         rejectUnauthorized: false,
       },
     })
-
-    console.log('SMTP CONFIG:')
-    console.log({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      user: env.SMTP_USER,
-      pass: env.SMTP_PASS ? 'EXISTS' : 'MISSING',
-    })
   }
 
   async sendVerificationEmail(to: string, token: string, firstName?: string): Promise<void> {
