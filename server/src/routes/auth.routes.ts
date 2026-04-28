@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Request, Response, NextFunction, Router } from 'express'
 import { authController } from '../controllers/auth.controllers.js'
 import { getAuthLimiter, getPasswordResetLimiter } from '../middleware/rateLimiter.js'
 import { validate } from '../middleware/validate.js'
@@ -17,9 +17,12 @@ import {
 
 const router = Router()
 
-const authLimiter = getAuthLimiter()
-const passwordResetLimiter = getPasswordResetLimiter()
-
+const authLimiter = (req: Request, res: Response, next: NextFunction) => {
+  return getAuthLimiter()(req, res, next)
+}
+const passwordResetLimiter = (req: Request, res: Response, next: NextFunction) => {
+  return getPasswordResetLimiter()(req, res, next)
+}
 /**
  * @swagger
  * /auth/register:

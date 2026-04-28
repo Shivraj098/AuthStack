@@ -81,14 +81,16 @@ class AuthController {
   async logout(req: Request, res: Response): Promise<void> {
     const refreshToken = req.cookies['refreshToken'] as string | undefined
 
+    const authHeader = req.headers.authorization
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
+
     if (refreshToken) {
-      await authService.logout(refreshToken)
+      await authService.logout(refreshToken, accessToken)
     }
 
     this.clearRefreshTokenCookie(res)
     res.json({ success: true, message: 'Logged out successfully' })
   }
-
   async logoutAll(req: Request, res: Response): Promise<void> {
     if (!req.user) throw new AuthenticationError()
     await authService.logoutAll(req.user.sub)
@@ -155,7 +157,7 @@ class AuthController {
       secure: env.NODE_ENV === 'production', // HTTPS only in production
       sameSite: 'strict', // Never sent on cross-site requests (CSRF protection)
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-      path: '/', // Cookie only sent to auth routes, not every request
+      path: '/api/auth', // Cookie only sent to auth routes, not every request
     })
   }
 
@@ -164,7 +166,7 @@ class AuthController {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
       sameSite: 'strict',
-      path: '/',
+      path: '/api/auth',
     })
   }
 }

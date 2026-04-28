@@ -24,10 +24,12 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   const token = authHeader.slice(7) // Remove "Bearer "
 
   const payload = verifyAccessToken(token) // Throws if invalid
+  console.log('🟡 MIDDLEWARE payload:', payload)
 
   // Check blacklist — catches tokens from logged-out sessions
   try {
     const blacklisted = await redisClient.get(`blacklist:${payload.jti}`)
+    console.log('🔴 BLACKLIST CHECK:', blacklisted)
 
     if (blacklisted) {
       return next(new AuthenticationError('Token has been revoked'))

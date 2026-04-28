@@ -39,10 +39,22 @@ const envSchema = z.object({
     .transform((val) => val.replace(/\/+$/, ''))
     .default('http://localhost:3000'), // auto-remove trailing slash
 
-  GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
-  GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
-  GITHUB_CLIENT_ID: z.string().min(1, 'GITHUB_CLIENT_ID is required'),
-  GITHUB_CLIENT_SECRET: z.string().min(1, 'GITHUB_CLIENT_SECRET is required'),
+  GOOGLE_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim()),
+  GOOGLE_CLIENT_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim()),
+  GITHUB_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim()),
+  GITHUB_CLIENT_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim()),
 
   CLIENT_URL: z.string().url(),
 })

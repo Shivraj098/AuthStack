@@ -1,6 +1,6 @@
 import { prisma } from '../config/database.js'
 import { NotFoundError, ConflictError, AppError } from '../utils/error.js'
-
+import { Prisma } from '@prisma/client'
 interface PaginationParams {
   page: number
   limit: number
@@ -140,13 +140,19 @@ class AdminService {
       throw new ConflictError(`User already has the '${roleName}' role`)
     }
 
-    await prisma.userRole.create({
-      data: {
-        userId: targetUserId,
-        roleId: role.id,
-        assignedBy: assignedByUserId,
-      },
-    })
+    try {
+      await prisma.userRole.create({
+        data: {
+          userId: targetUserId,
+          roleId: role.id,
+        },
+      })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictError('User already has this role')
+      }
+      throw err
+    }
 
     await prisma.auditLog.create({
       data: {

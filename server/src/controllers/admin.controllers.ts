@@ -1,4 +1,4 @@
-import { Request, Response } from 'express'
+import { Request, Response, NextFunction } from 'express'
 import { adminService } from '../services/admin.service.js'
 import { z } from 'zod'
 
@@ -16,16 +16,13 @@ function getparams(param: string | string[] | undefined): string | undefined {
 }
 
 class AdminController {
-  async listUsers(req: Request, res: Response): Promise<void> {
+  async listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
     const query = paginationSchema.parse(req.query)
     try {
       const result = await adminService.listUsers(query)
       res.json({ success: true, data: result })
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      })
+      next(error)
     }
   }
 
@@ -48,21 +45,18 @@ class AdminController {
     res.json({ success: true, data: user })
   }
 
-  async assignRole(req: Request, res: Response): Promise<void> {
+  async assignRole(req: Request, res: Response, next: NextFunction): Promise<void> {
     const id = getparams(req.params['id'])
     const { role } = roleSchema.parse(req.body)
     try {
       const result = await adminService.assignRole(id!, role, req.user!.sub)
       res.json({ success: true, data: result })
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      })
+      next(error)
     }
   }
 
-  async removeRole(req: Request, res: Response): Promise<void> {
+  async removeRole(req: Request, res: Response, next: NextFunction): Promise<void> {
     const id = getparams(req.params['id'])
 
     if (!id) {
@@ -87,22 +81,16 @@ class AdminController {
       const result = await adminService.removeRole(id, role, req.user.sub)
       res.json({ success: true, data: result })
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      })
+      next(error)
     }
   }
-  async toggleActive(req: Request, res: Response): Promise<void> {
+  async toggleActive(req: Request, res: Response, next: NextFunction): Promise<void> {
     const id = getparams(req.params['id'])
     try {
       const result = await adminService.toggleUserActive(id!, req.user!.sub)
       res.json({ success: true, data: result })
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      })
+      next(error)
     }
   }
 

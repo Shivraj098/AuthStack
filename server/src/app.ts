@@ -125,7 +125,10 @@ async function bootstrap(): Promise<void> {
 
   // ── Step 8: Start server ────────────────────────────────────────────────────
   const server = app.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'Server running')
+    logger.info(
+      { port: env.PORT, env: env.NODE_ENV, url: `http://localhost:${env.PORT}` },
+      'Server running'
+    )
     logger.info({ url: `http://localhost:${env.PORT}/api/docs` }, 'API docs available')
   })
 

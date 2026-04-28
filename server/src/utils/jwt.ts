@@ -73,6 +73,7 @@ export function signRefreshToken(payload: Omit<RefreshTokenPayload, 'type'>): st
     issuer: 'auth-app',
     audience: 'auth-app-client',
     algorithm: 'HS256',
+
     jwtid: crypto.randomUUID(), // Always include a unique ID for refresh tokens (useful for rotation and revocation)
   } as jwt.SignOptions)
 }

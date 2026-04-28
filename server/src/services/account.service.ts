@@ -78,7 +78,7 @@ class AccountService {
 
     const valid = await bcrypt.compare(currentPassword, user.passwordHash)
     if (!valid) {
-      throw new AuthorizationError('Current password is incorrect')
+      throw new AuthorizationError('Incorrect password')
     }
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
