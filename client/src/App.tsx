@@ -28,13 +28,8 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/account" element={<AccountSettings />} />
         <Route path="/activity" element={<ActivityLog />} />
-        <Route path="/mfa/setup" element={<MfaSetup />} />
       </Route>
-      {/* Add account settings*/}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/account" element={<AccountSettings />} />
-      </Route>
+
       {/* Admin only example — ready for Phase 09 */}
       <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
         <Route path="/admin" element={<AdminPanel />} />

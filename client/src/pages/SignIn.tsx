@@ -20,7 +20,6 @@ export function SignIn() {
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const oauthError = searchParams.get('error')
-  // Add inside SignIn, after const location line:
   const successMessage = (location.state as { message?: string })?.message
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard'
 
@@ -93,13 +92,7 @@ export function SignIn() {
       {oauthError === 'oauth_failed' && (
         <Alert variant="error">Something went wrong with social sign in. Please try again.</Alert>
       )}
-      <form
-        onSubmit={() => {
-          handleSubmit(onSubmit)
-        }}
-        noValidate
-        className="space-y-4"
-      >
+      <form onSubmit={void handleSubmit(onSubmit)} noValidate className="space-y-4">
         <Input
           {...register('email')}
           type="email"
