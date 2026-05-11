@@ -15,17 +15,16 @@ COPY server/prisma ./server/prisma
 
 # Install ALL dependencies including devDependencies for compilation
 ENV HUSKY=0
-RUN npm ci --workspace=server
+RUN npm ci --workspace=server --ignore-scripts
 
 # Copy source
 COPY server ./server
-COPY server/prisma ./server/prisma
 # Generate Prisma client for the target platform
 RUN npx prisma generate --schema=server/prisma/schema.prisma
 # Compile TypeScript → JavaScript
 RUN npm run build --workspace=server
 # Prune devDependencies — only keep what production needs
-RUN npm prune --production
+RUN npm prune --omit=dev 
 
 # ─── Stage 2: Production ────────────────────────────────────────
 # Fresh minimal image — no compiler, no dev tools, no test files
@@ -37,20 +36,20 @@ RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S authapp -u 1001
 
-WORKDIR /app
+WORKDIR /app/server
 
 # Copy only what the production app needs:
 # 1. Compiled JavaScript output
 COPY --from=builder --chown=authapp:nodejs /app/server/dist ./dist
 
 # 2. Pruned node_modules (no devDependencies)
-COPY --from=builder --chown=authapp:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=authapp:nodejs /app/node_modules ../node_modules
 
 # 3. Generated Prisma client from the node_modules
 # NOTE: prisma client is generated from the node_modules
 
 # 4. Prisma schema (needed for migrations at startup)
-COPY --from=builder --chown=authapp:nodejs /app/server/prisma ./server/prisma
+COPY --from=builder --chown=authapp:nodejs /app/server/prisma ./prisma
 
 # 5. Package.json (needed for npm scripts)
 COPY --from=builder --chown=authapp:nodejs /app/server/package.json ./
