@@ -37,7 +37,7 @@ RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S authapp -u 1001
 
-WORKDIR /app/server
+WORKDIR /app
 
 # Copy only what the production app needs:
 # 1. Compiled JavaScript output
@@ -50,10 +50,10 @@ COPY --from=builder --chown=authapp:nodejs /app/node_modules ./node_modules
 # NOTE: prisma client is generated from the node_modules
 
 # 4. Prisma schema (needed for migrations at startup)
-COPY --from=builder --chown=authapp:nodejs /app/server/prisma ./prisma
+COPY --from=builder --chown=authapp:nodejs /app/server/prisma ./server/prisma
 
 # 5. Package.json (needed for npm scripts)
-COPY --from=builder --chown=authapp:nodejs /app/package.json ./
+COPY --from=builder --chown=authapp:nodejs /app/server/package.json ./
 
 # Switch to non-root user
 USER authapp
