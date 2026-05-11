@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch --env-file=../.env src/app.ts",
-    "build": "tsup src/app.ts --format esm --dts",
+    "build": "tsup src/app.ts --format esm",
     "start": "node dist/app.js",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit",
