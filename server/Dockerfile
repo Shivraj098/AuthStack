@@ -11,14 +11,14 @@ WORKDIR /app
 # If package.json doesn't change, npm install layer is reused
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/package.json
-COPY prisma ./prisma/
+COPY /server/prisma ./server/prisma
 
 # Install ALL dependencies including devDependencies for compilation
 RUN npm ci --workspace=server
 
 # Copy source
 COPY server ./server
-COPY prisma ./prisma
+COPY /server/prisma ./server/prisma
 # Generate Prisma client for the target platform
 RUN npx prisma generate --schema=server/prisma/schema.prisma
 # Compile TypeScript → JavaScript
