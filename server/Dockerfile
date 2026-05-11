@@ -11,14 +11,15 @@ WORKDIR /app
 # If package.json doesn't change, npm install layer is reused
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/package.json
-COPY /server/prisma ./server/prisma
+COPY server/prisma ./server/prisma
 
 # Install ALL dependencies including devDependencies for compilation
+ENV HUSKY=0
 RUN npm ci --workspace=server
 
 # Copy source
 COPY server ./server
-COPY /server/prisma ./server/prisma
+COPY server/prisma ./server/prisma
 # Generate Prisma client for the target platform
 RUN npx prisma generate --schema=server/prisma/schema.prisma
 # Compile TypeScript → JavaScript
@@ -49,7 +50,7 @@ COPY --from=builder --chown=authapp:nodejs /app/node_modules ./node_modules
 # NOTE: prisma client is generated from the node_modules
 
 # 4. Prisma schema (needed for migrations at startup)
-COPY --from=builder --chown=authapp:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=authapp:nodejs /app/server/prisma ./prisma
 
 # 5. Package.json (needed for npm scripts)
 COPY --from=builder --chown=authapp:nodejs /app/package.json ./
