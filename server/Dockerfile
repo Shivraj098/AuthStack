@@ -70,4 +70,4 @@ ENTRYPOINT ["dumb-init", "--"]
 
 # Run migrations then start the server
 # Using shell form so environment variables are expanded
-CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration skipped'; node dist/app.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration skipped'; node dist/app.mjs"]
