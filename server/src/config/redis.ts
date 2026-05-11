@@ -7,8 +7,7 @@ export const redisClient = createClient({
   socket:
     env.NODE_ENV === 'production'
       ? {
-          tls: true,
-          rejectUnauthorized: false, // Only for self-signed certs in production. Remove if using a CA-signed cert.
+          // Only for self-signed certs in production. Remove if using a CA-signed cert.
           reconnectStrategy: (retries: number): number | Error => {
             if (retries > 10) {
               logger.error('Redis: maximum reconnection attempts reached')
