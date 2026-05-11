@@ -4,18 +4,34 @@ import { logger } from './logger.js'
 
 export const redisClient = createClient({
   url: env.REDIS_URL,
-  socket: {
-    reconnectStrategy: (retries: number): number | Error => {
-      if (retries > 10) {
-        logger.error('Redis: maximum reconnection attempts reached')
-        return new Error('Maximum reconnection attempts reached')
-      }
-      const delay = Math.min(retries * 100, 3000) // Exponential backoff with a max delay of 3 seconds
-      logger.warn({ retries, delay }, 'Redis connection lost, attempting reconnect')
-      return delay
-    },
-    connectTimeout: 10_000, // 10 seconds
-  },
+  socket:
+    env.NODE_ENV === 'production'
+      ? {
+          tls: true,
+          rejectUnauthorized: false, // Only for self-signed certs in production. Remove if using a CA-signed cert.
+          reconnectStrategy: (retries: number): number | Error => {
+            if (retries > 10) {
+              logger.error('Redis: maximum reconnection attempts reached')
+              return new Error('Maximum reconnection attempts reached')
+            }
+            const delay = Math.min(retries * 100, 3000) // Exponential backoff with a max delay of 3 seconds
+            logger.warn({ retries, delay }, 'Redis connection lost, attempting reconnect')
+            return delay
+          },
+          connectTimeout: 10_000, // 10 seconds
+        }
+      : {
+          reconnectStrategy: (retries: number): number | Error => {
+            if (retries > 10) {
+              logger.error('Redis: maximum reconnection attempts reached')
+              return new Error('Maximum reconnection attempts reached')
+            }
+            const delay = Math.min(retries * 100, 3000) // Exponential backoff with a max delay of 3 seconds
+            logger.warn({ retries, delay }, 'Redis connection lost, attempting reconnect')
+            return delay
+          },
+          connectTimeout: 10_000, // 10 seconds
+        },
 }) as RedisClientType
 
 // ─── Lifecycle events ─────────────────────────────────────────────────────────

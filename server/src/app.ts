@@ -15,6 +15,12 @@ import { logger } from './config/logger.js'
 
 const app = express()
 
+// Required for correct req.ip resolution behind Nginx / Cloudflare / AWS ALB.
+// Value of 1 means trust one proxy hop.
+if (env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1)
+}
+
 // ======================
 // 1. SECURITY & FOUNDATION
 // ======================
@@ -29,7 +35,7 @@ app.use(
 )
 
 // Required for correct req.ip resolution behind Nginx / Cloudflare / AWS ALB.
-// Value of 1 means trust one proxy hop. Increase if you have multiple proxy layers.
+// Value of 1 means trust one proxy hop.
 if (env.NODE_ENV === 'production') {
   app.set('trust proxy', 1)
 }
