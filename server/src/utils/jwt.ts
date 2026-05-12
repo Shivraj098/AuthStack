@@ -1,4 +1,5 @@
-import jwt, { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken'
+import jwt from 'jsonwebtoken'
+const { JsonWebTokenError, TokenExpiredError } = jwt
 import crypto from 'node:crypto'
 import { z } from 'zod'
 
