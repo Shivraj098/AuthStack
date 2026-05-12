@@ -83,7 +83,7 @@ export function MfaVerify() {
           : 'Enter the 6-digit code from your authenticator app.'
       }
     >
-      <form onSubmit={void handleSubmit(onSubmit)} noValidate className="space-y-4">
+      <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="space-y-4">
         <Input
           {...register('code')}
           type="text"

@@ -193,7 +193,11 @@ export function MfaSetup() {
 
             {/* Step 2: Verify first code */}
             {step === 'verify' && (
-              <form onSubmit={void handleSubmit(onVerify)} noValidate className="space-y-5">
+              <form
+                onSubmit={(e) => void handleSubmit(onVerify)(e)}
+                noValidate
+                className="space-y-5"
+              >
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Enter the 6-digit code</h2>
                   <p className="text-sm text-gray-500 mt-1">

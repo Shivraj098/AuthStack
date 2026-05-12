@@ -74,8 +74,8 @@ export function ForgotPassword() {
       subtitle="Enter your email and we'll send you a reset link."
     >
       <form
-        onSubmit={() => {
-          handleSubmit(onSubmit)
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e)
         }}
         noValidate
         className="space-y-4"

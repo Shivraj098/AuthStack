@@ -92,7 +92,13 @@ export function SignIn() {
       {oauthError === 'oauth_failed' && (
         <Alert variant="error">Something went wrong with social sign in. Please try again.</Alert>
       )}
-      <form onSubmit={void handleSubmit(onSubmit)} noValidate className="space-y-4">
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e)
+        }}
+        noValidate
+        className="space-y-4"
+      >
         <Input
           {...register('email')}
           type="email"

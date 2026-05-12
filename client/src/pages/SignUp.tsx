@@ -98,7 +98,13 @@ export function SignUp() {
         </>
       }
     >
-      <form onSubmit={void handleSubmit(onSubmit)} noValidate className="space-y-4">
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e)
+        }}
+        noValidate
+        className="space-y-4"
+      >
         <div className="grid grid-cols-2 gap-3">
           <Input
             {...register('firstName')}

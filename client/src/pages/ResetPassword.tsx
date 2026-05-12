@@ -83,8 +83,8 @@ export function ResetPassword() {
   return (
     <AuthLayout title="Set new password" subtitle="Choose a strong password for your account.">
       <form
-        onSubmit={() => {
-          handleSubmit(onSubmit)
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e)
         }}
         noValidate
         className="space-y-4"
