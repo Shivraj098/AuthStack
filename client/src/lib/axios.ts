@@ -20,9 +20,11 @@ export function getAccessToken(): string | null {
   return accessToken
 }
 
+const apiUrl: string = import.meta.env.VITE_API_URL
+
 // Create the main Axios instance
 export const api: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: apiUrl ?? '/api',
   withCredentials: true, // Sends httpOnly refresh token cookie automatically
   headers: {
     'Content-Type': 'application/json',
