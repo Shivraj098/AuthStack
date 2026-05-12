@@ -30,7 +30,6 @@
     "express-rate-limit": "^8.3.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^8.0.5",
     "otplib": "^13.4.0",
     "pg": "^8.20.0",
     "pino": "^10.3.1",
@@ -38,6 +37,7 @@
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.3.1",
     "redis": "^5.11.0",
+    "resend": "^6.12.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.3.6"
@@ -49,7 +49,6 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.6.0",
-    "@types/nodemailer": "^8.0.0",
     "@types/otplib": "^7.0.0",
     "@types/pg": "^8.20.0",
     "@types/pino": "^7.0.4",

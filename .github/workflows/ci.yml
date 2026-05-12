@@ -74,10 +74,8 @@ jobs:
           JWT_REFRESH_SECRET: ci-test-refresh-secret-minimum-32-characters
           JWT_ACCESS_EXPIRES_IN: 15m
           JWT_REFRESH_EXPIRES_IN: 7d
-          SMTP_HOST: smtp.ethereal.email
-          SMTP_PORT: 587
-          SMTP_USER: test
-          SMTP_PASS: test
+          RESEND_API_KEY: re_J8PYFVqW_EjypQMaJtzirYsEKL8HRWTVz
+          EMAIL_FROM: onboarding@resend.dev
           CLIENT_URL: http://localhost:5173
           SERVER_URL: http://localhost:3001
           GOOGLE_CLIENT_ID: test-google-client-id
