@@ -34,16 +34,16 @@ interface OAuthUserProfile {
 
 const providers: Record<OAuthProvider, OAuthConfig> = {
   google: {
-    clientId: env.GOOGLE_CLIENT_ID,
-    clientSecret: env.GOOGLE_CLIENT_SECRET,
+    clientId: env.GOOGLE_CLIENT_ID!,
+    clientSecret: env.GOOGLE_CLIENT_SECRET!,
     authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v3/userinfo',
     scopes: ['openid', 'email', 'profile'],
   },
   github: {
-    clientId: env.GITHUB_CLIENT_ID,
-    clientSecret: env.GITHUB_CLIENT_SECRET,
+    clientId: env.GITHUB_CLIENT_ID!,
+    clientSecret: env.GITHUB_CLIENT_SECRET!,
     authorizationUrl: 'https://github.com/login/oauth/authorize',
     tokenUrl: 'https://github.com/login/oauth/access_token',
     userInfoUrl: 'https://api.github.com/user',
@@ -84,7 +84,7 @@ class OAuthService {
 
     const params = new URLSearchParams({
       client_id: config.clientId,
-      redirect_uri: `${env.SERVER_URL}/api/auth/callback/${provider}`,
+      redirect_uri: `${env.SERVER_URL}/api/oauth/callback/${provider}`,
       response_type: 'code',
       scope: config.scopes.join(' '),
       state,
@@ -201,7 +201,7 @@ class OAuthService {
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: `${env.SERVER_URL}/api/auth/callback/${provider}`,
+        redirect_uri: `${env.SERVER_URL}/api/oauth/callback/${provider}`,
         client_id: config.clientId,
         client_secret: config.clientSecret,
         code_verifier: codeVerifier, // PKCE proof

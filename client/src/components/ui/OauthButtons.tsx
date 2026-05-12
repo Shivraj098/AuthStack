@@ -2,13 +2,19 @@ interface OAuthButtonsProps {
   mode: 'signin' | 'signup'
 }
 
+const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
+
+const getOAuthUrl = (provider: 'google' | 'github'): string => {
+  return `${API_BASE}/oauth/${provider}`
+}
+
 export function OAuthButtons({ mode }: OAuthButtonsProps) {
   const label = mode === 'signin' ? 'Sign in' : 'Sign up'
 
   return (
     <div className="space-y-3">
       <a
-        href="/api/auth/google"
+        href={getOAuthUrl('google')}
         className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 active:scale-[0.98]"
       >
         <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -33,7 +39,7 @@ export function OAuthButtons({ mode }: OAuthButtonsProps) {
       </a>
 
       <a
-        href="/api/auth/github"
+        href={getOAuthUrl('github')}
         className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-gray-900 border border-gray-900 rounded-xl text-sm font-medium text-white hover:bg-gray-800 transition-all duration-150 active:scale-[0.98]"
       >
         <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
