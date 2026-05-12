@@ -6,12 +6,12 @@ class EmailService {
 
   constructor() {
     this.transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: false, // true for 465, false for other ports
+      host: env.SMTP_HOST, //smtp.resend.com
+      port: env.SMTP_PORT, //465
+      secure: true, // true for 465, false for other ports
       auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
+        user: env.SMTP_USER, //resend
+        pass: env.SMTP_PASS, //API_KEY
       },
       tls: {
         rejectUnauthorized: false,
