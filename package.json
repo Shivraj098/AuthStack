@@ -12,7 +12,7 @@
     "dev:client": "npm run dev --workspace=client",
     "lint": "npm run lint --workspaces",
     "format": "prettier --write \"**/*.{ts,tsx,json}\"",
-    "prepare": "is-ci || husky"
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
