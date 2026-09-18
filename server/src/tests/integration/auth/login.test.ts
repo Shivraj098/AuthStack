@@ -120,7 +120,7 @@ describe('POST /api/auth/login', () => {
       const refreshCookie = extractRefreshCookie(res)
 
       expect(refreshCookie).toContain('HttpOnly')
-      expect(refreshCookie).toContain('SameSite=Strict')
+      expect(refreshCookie).toContain('SameSite=none')
       expect(refreshCookie).toContain('Path=/api/auth')
     })
 
