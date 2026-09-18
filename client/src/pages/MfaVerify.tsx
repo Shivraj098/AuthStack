@@ -49,7 +49,7 @@ export function MfaVerify() {
 
     try {
       const res = await api.post<ApiResponse<{ accessToken: string; user: User }>>(
-        '/auth/mfa/complete',
+        '/mfa/complete',
         {
           mfaPendingToken: token,
           code: data.code.replace(/\s/g, ''),

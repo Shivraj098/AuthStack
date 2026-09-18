@@ -77,7 +77,7 @@ export function AccountSettings() {
 
   useEffect(() => {
     api
-      .get<ApiResponse<{ isEnabled: boolean; backupCodesRemaining: number }>>('/auth/mfa/status')
+      .get<ApiResponse<{ isEnabled: boolean; backupCodesRemaining: number }>>('/mfa/status')
       .then((res) => setMfaStatus(res.data.data!))
       .catch(() => {})
     void fetchSessions()

@@ -24,6 +24,7 @@ class MfaService {
 
   // ─── Step 1: Generate Setup ───────────────────────────────
   async generateSetup(userId: string): Promise<{
+    secret: string
     qrCodeDataUrl: string
     backupCodes: string[]
   }> {
@@ -75,8 +76,9 @@ class MfaService {
       }),
     ])
 
-    // 🔒 Do NOT return secret
-    return { qrCodeDataUrl, backupCodes }
+    // Return the provisioning secret only during MFA enrollment.
+    // It is needed for manual authenticator setup.
+    return { secret, qrCodeDataUrl, backupCodes }
   }
 
   // ─── Step 2: Verify Setup ───────────────────────────────

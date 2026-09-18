@@ -15,7 +15,7 @@ interface SetupData {
   backupCodes: string[]
 }
 
-type Step = 'loading' | 'scan' | 'verify' | 'backup' | 'done'
+type Step = 'loading' | 'error' | 'scan' | 'verify' | 'backup' | 'done'
 
 const codeSchema = z.object({
   code: z.string().length(6, 'Code must be 6 digits').regex(/^\d+$/, 'Code must be numeric'),
@@ -40,14 +40,17 @@ export function MfaSetup() {
   useEffect(() => {
     async function initSetup() {
       try {
-        const res = await api.post<ApiResponse<SetupData>>('/auth/mfa/setup')
+        const res = await api.post<ApiResponse<SetupData>>('/mfa/setup')
         setSetupData(res.data.data!)
         setStep('scan')
       } catch (err: unknown) {
         if (isAxiosError(err)) {
           const d = err.response?.data as ApiResponse<null>
           setError(d?.error?.message ?? 'Failed to initialize MFA setup')
+        } else {
+          setError('Failed to initialize MFA setup')
         }
+        setStep('error')
       }
     }
     void initSetup()
@@ -56,7 +59,7 @@ export function MfaSetup() {
   async function onVerify(data: CodeForm) {
     setError(null)
     try {
-      await api.post('/auth/mfa/verify-setup', { code: data.code })
+      await api.post('/mfa/verify-setup', { code: data.code })
       setStep('backup')
     } catch (err: unknown) {
       if (isAxiosError(err)) {
@@ -83,6 +86,37 @@ export function MfaSetup() {
       </div>
     )
   }
+  if (step === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full mx-auto p-8 bg-white rounded-2xl border border-gray-200 text-center space-y-4">
+          <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+            <svg
+              className="w-6 h-6 text-red-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+              />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-600">{error}</p>
+          <Button
+            onClick={() => {
+              void navigate('/account')
+            }}
+          >
+            Back to settings
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -92,7 +126,9 @@ export function MfaSetup() {
             Set up two-factor authentication
           </span>
           <button
-            onClick={() => void navigate('/account')}
+            onClick={() => {
+              void navigate('/account')
+            }}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
             Cancel
