@@ -1,21 +1,10 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import request, { Response } from 'supertest'
 import { createTestApp } from '../../helpers/app.helpers.js'
 import { createUser } from '../../factories/user.factories.js'
 import { prisma } from '../../../config/database.js'
 import { generateSecureToken, hashToken, getExpiryDate } from '../../../utils/token.js'
 import type { Express } from 'express'
-
-/* ----------------------------- */
-/* Mock external side effects    */
-/* ----------------------------- */
-
-vi.mock('../../../services/email.service.js', () => ({
-  emailService: {
-    sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
-    sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
-  },
-}))
 
 let app: Express
 

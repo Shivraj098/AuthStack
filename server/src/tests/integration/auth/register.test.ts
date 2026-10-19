@@ -1,20 +1,22 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import request, { Response } from 'supertest'
-import { createTestApp } from '../../helpers/app.helpers.js'
-import { prisma } from '../../../config/database.js'
-import type { Express } from 'express'
 import bcrypt from 'bcrypt'
-import crypto from 'crypto'
+import { randomUUID } from 'node:crypto'
+import type { Express } from 'express'
+import request from 'supertest'
+import type { Response } from 'supertest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { prisma } from '../../../config/database.js'
+import { emailService } from '../../../services/email.service.js'
+import { createTestApp } from '../../helpers/app.helpers.js'
 
 let app: Express
 
-beforeAll(() => {
-  app = createTestApp()
-})
-
-/* ----------------------------- */
-/* Types (STRICT CONTRACTS)      */
-/* ----------------------------- */
+interface RegistrationPayload {
+  email: string
+  password: string
+  firstName: string
+  lastName: string
+}
 
 interface SuccessResponse {
   success: boolean
@@ -29,194 +31,309 @@ interface ValidationErrorResponse {
   }
 }
 
-/* ----------------------------- */
-/* Helpers                       */
-/* ----------------------------- */
+/**
+ * Validates that an unknown value is a non-null object.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
-function assertSuccessResponse(res: Response, expectedStatus: number): SuccessResponse {
-  if (res.status !== expectedStatus) {
-    throw new Error(`Expected ${expectedStatus}, got ${res.status}`)
+/**
+ * Validates the field-error structure returned by the API.
+ */
+function isStringArrayRecord(value: unknown): value is Record<string, string[]> {
+  if (!isRecord(value)) {
+    return false
   }
 
-  const body = res.body as Partial<SuccessResponse>
+  return Object.values(value).every(
+    (entry) => Array.isArray(entry) && entry.every((item) => typeof item === 'string')
+  )
+}
 
-  if (typeof body?.success !== 'boolean' || typeof body?.message !== 'string') {
+/**
+ * Narrows nullable database results after checking their existence.
+ */
+function assertDefined<T>(value: T | null | undefined, message: string): asserts value is T {
+  if (value === null || value === undefined) {
+    throw new Error(message)
+  }
+}
+
+/**
+ * Validates the successful registration response contract.
+ */
+function assertSuccessResponse(res: Response, expectedStatus: number): SuccessResponse {
+  if (res.status !== expectedStatus) {
+    throw new Error(`Expected status ${expectedStatus}, received ${res.status}`)
+  }
+
+  const body: unknown = res.body
+
+  if (!isRecord(body)) {
+    throw new Error('Invalid success response: expected an object')
+  }
+
+  const success = body.success
+  const message = body.message
+
+  if (typeof success !== 'boolean' || typeof message !== 'string') {
     throw new Error('Invalid success response structure')
   }
 
-  return body as SuccessResponse
+  return { success, message }
 }
-function getValidPayload() {
+
+/**
+ * Validates the API's standard validation-error response.
+ */
+function assertValidationError(res: Response): ValidationErrorResponse {
+  if (res.status !== 400) {
+    throw new Error(`Expected status 400, received ${res.status}`)
+  }
+
+  const body: unknown = res.body
+
+  if (!isRecord(body) || !isRecord(body.error)) {
+    throw new Error('Invalid validation error response structure')
+  }
+
+  const error = body.error
+
+  if (error.code !== 'VALIDATION_ERROR') {
+    throw new Error('Expected VALIDATION_ERROR response code')
+  }
+
+  const result: ValidationErrorResponse['error'] = {
+    code: 'VALIDATION_ERROR',
+  }
+
+  if (typeof error.message === 'string') {
+    result.message = error.message
+  }
+
+  if (isStringArrayRecord(error.fields)) {
+    result.fields = error.fields
+  }
+
+  return { error: result }
+}
+
+function getValidPayload(): RegistrationPayload {
   return {
-    email: `register_${crypto.randomUUID()}@test.com`,
+    email: `register_${randomUUID()}@test.com`,
     password: 'Test@12345',
     firstName: 'Register',
     lastName: 'Test',
   }
 }
 
-function assertValidationError(res: Response): ValidationErrorResponse {
-  if (res.status !== 400) {
-    throw new Error(`Expected 400, got ${res.status}`)
-  }
+/**
+ * Submits a registration request and verifies the successful
+ * response contract before a test inspects persisted data.
+ */
+async function registerSuccessfully(payload: RegistrationPayload): Promise<Response> {
+  const res = await request(app).post('/api/auth/register').send(payload)
 
-  const body = res.body as Partial<ValidationErrorResponse>
+  assertSuccessResponse(res, 202)
 
-  if (!body?.error?.code || body.error.code !== 'VALIDATION_ERROR') {
-    throw new Error('Invalid validation error structure')
-  }
-
-  return body as ValidationErrorResponse
+  return res
 }
 
-/* ----------------------------- */
-/* Tests                         */
-/* ----------------------------- */
+// This spy ensures the registration test never invokes the real
+// verification-email implementation, even if the shared test mock
+// has not been configured correctly.
+const sendVerificationEmailSpy = vi
+  .spyOn(emailService, 'sendVerificationEmail')
+  .mockResolvedValue(undefined)
+
+beforeAll(() => {
+  app = createTestApp()
+})
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
 
 describe('POST /api/auth/register', () => {
-  describe('Success cases', () => {
-    it('returns 202 with enumeration-safe message', async () => {
-      const validPayload = getValidPayload()
-      const res = await request(app).post('/api/auth/register').send(validPayload)
+  describe('Successful registration', () => {
+    it('returns 202 with an enumeration-safe message', async () => {
+      const payload = getValidPayload()
 
+      const res = await registerSuccessfully(payload)
       const body = assertSuccessResponse(res, 202)
 
       expect(body.success).toBe(true)
       expect(body.message).toContain('If this email is not registered')
     })
 
-    it('creates user in database with isVerified=false', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
+    it('creates an active user whose email is not verified', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
 
       const user = await prisma.user.findUnique({
-        where: { email: validPayload.email },
+        where: { email: payload.email },
       })
 
-      expect(user).not.toBeNull()
-      expect(user!.isVerified).toBe(false)
-      expect(user!.isActive).toBe(true)
+      assertDefined(user, 'Expected registration to create a user')
+
+      expect(user.isVerified).toBe(false)
+      expect(user.isActive).toBe(true)
     })
 
-    it('stores bcrypt hash — never plain password', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
+    it('stores a bcrypt hash rather than the plain-text password', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
 
       const user = await prisma.user.findUnique({
-        where: { email: validPayload.email },
+        where: { email: payload.email },
       })
 
-      expect(user).not.toBeNull()
+      assertDefined(user, 'Expected registration to create a user')
 
-      expect(user!.passwordHash).toMatch(/^\$2[aby]\$\d{2}\$/)
-      expect(user!.passwordHash).not.toContain(validPayload.password)
+      const passwordHash = user.passwordHash
 
-      // ✅ REAL validation
-      if (!user?.passwordHash) {
-        throw new Error('Expected user to have a passwordHash')
+      if (typeof passwordHash !== 'string') {
+        throw new Error('Expected a password hash for a password-registered user')
       }
 
-      const isValid = await bcrypt.compare(validPayload.password, user.passwordHash)
+      expect(passwordHash).toMatch(/^\$2[aby]\$\d{2}\$/)
+      expect(passwordHash).not.toContain(payload.password)
+
+      const isValid = await bcrypt.compare(payload.password, passwordHash)
+
       expect(isValid).toBe(true)
     })
-    it('normalizes email to lowercase before storing', async () => {
-      const payload = {
+
+    it('normalizes the email address to lowercase before storing', async () => {
+      const payload: RegistrationPayload = {
         ...getValidPayload(),
-        email: 'UPPERCASE@TEST.COM',
+        email: getValidPayload().email.toUpperCase(),
       }
 
-      await request(app).post('/api/auth/register').send(payload)
+      const normalizedEmail = payload.email.toLowerCase()
 
-      const user = await prisma.user.findFirst({
-        where: {
-          email: {
-            equals: payload.email,
-            mode: 'insensitive',
+      await registerSuccessfully(payload)
+
+      const user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      })
+
+      assertDefined(user, 'Expected the normalized email address to be stored')
+
+      expect(user.email).toBe(normalizedEmail)
+    })
+
+    it('assigns the default user role', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
+
+      const user = await prisma.user.findUnique({
+        where: { email: payload.email },
+        include: {
+          roles: {
+            include: { role: true },
           },
         },
       })
 
-      expect(user).not.toBeNull()
+      assertDefined(user, 'Expected registration to create a user')
+
+      expect(user.roles).toHaveLength(1)
+
+      const roleAssignment = user.roles[0]
+
+      assertDefined(roleAssignment, 'Expected the new user to have a role assignment')
+
+      expect(roleAssignment.role.name).toBe('user')
     })
 
-    it('assigns default user role', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
+    it('creates a hashed, unused email-verification record', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
 
       const user = await prisma.user.findUnique({
-        where: { email: validPayload.email },
-        include: { roles: { include: { role: true } } },
+        where: { email: payload.email },
       })
 
-      expect(user).not.toBeNull()
-      expect(user!.roles).toHaveLength(1)
-      expect(user!.roles[0]!.role.name).toBe('user')
-    })
-
-    it('creates email verification record with hash — not plain token', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
-
-      const user = await prisma.user.findUnique({
-        where: { email: validPayload.email },
-      })
-
-      expect(user).not.toBeNull()
+      assertDefined(user, 'Expected registration to create a user')
 
       const verification = await prisma.emailVerification.findFirst({
-        where: { userId: user!.id },
+        where: { userId: user.id },
       })
 
-      expect(verification).not.toBeNull()
-      expect(verification!.tokenHash).toHaveLength(64)
-      expect(verification!.usedAt).toBeNull()
-      expect(verification!.expiresAt.getTime()).toBeGreaterThan(Date.now())
+      assertDefined(verification, 'Expected an email-verification record')
+
+      expect(verification.tokenHash).toHaveLength(64)
+      expect(verification.usedAt).toBeNull()
+      expect(verification.expiresAt.getTime()).toBeGreaterThan(Date.now())
     })
 
-    it('creates USER_REGISTERED audit log', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
+    it('creates a USER_REGISTERED audit log', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
 
       const user = await prisma.user.findUnique({
-        where: { email: validPayload.email },
+        where: { email: payload.email },
       })
 
-      expect(user).not.toBeNull()
+      assertDefined(user, 'Expected registration to create a user')
 
-      const log = await prisma.auditLog.findFirst({
-        where: { userId: user!.id, event: 'USER_REGISTERED' },
+      const auditLog = await prisma.auditLog.findFirst({
+        where: {
+          userId: user.id,
+          event: 'USER_REGISTERED',
+        },
       })
 
-      expect(log).not.toBeNull()
+      expect(auditLog).not.toBeNull()
+    })
+
+    it('requests verification email delivery through the email service', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
+
+      expect(sendVerificationEmailSpy).toHaveBeenCalledWith(
+        payload.email,
+        expect.any(String),
+        payload.firstName
+      )
     })
   })
 
   describe('Enumeration prevention', () => {
-    it('returns identical response for duplicate email', async () => {
-      const validPayload = getValidPayload()
-      const first = await request(app).post('/api/auth/register').send(validPayload)
+    it('returns the same message for a duplicate email', async () => {
+      const payload = getValidPayload()
 
-      const second = await request(app).post('/api/auth/register').send(validPayload)
+      const first = await registerSuccessfully(payload)
+      const second = await registerSuccessfully(payload)
 
-      const body1 = assertSuccessResponse(first, 202)
-      const body2 = assertSuccessResponse(second, 202)
+      const firstBody = assertSuccessResponse(first, 202)
+      const secondBody = assertSuccessResponse(second, 202)
 
-      expect(body1.message).toBe(body2.message)
+      expect(secondBody.message).toBe(firstBody.message)
 
-      // Ensure only one user exists
       const count = await prisma.user.count({
-        where: { email: validPayload.email },
+        where: { email: payload.email },
       })
+
       expect(count).toBe(1)
     })
 
-    it('does not create a second user for duplicate email', async () => {
-      const validPayload = getValidPayload()
-      await request(app).post('/api/auth/register').send(validPayload)
-      await request(app).post('/api/auth/register').send(validPayload)
+    it('does not create a second user for a duplicate email', async () => {
+      const payload = getValidPayload()
+
+      await registerSuccessfully(payload)
+      await registerSuccessfully(payload)
 
       const count = await prisma.user.count({
-        where: { email: validPayload.email },
+        where: { email: payload.email },
       })
 
       expect(count).toBe(1)
@@ -224,25 +341,28 @@ describe('POST /api/auth/register', () => {
   })
 
   describe('Validation failures', () => {
-    it('returns 400 for invalid email', async () => {
-      const validPayload = getValidPayload()
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ ...validPayload, email: 'notanemail' })
+    it('returns 400 for an invalid email address', async () => {
+      const payload = {
+        ...getValidPayload(),
+        email: 'notanemail',
+      }
+
+      const res = await request(app).post('/api/auth/register').send(payload)
 
       const body = assertValidationError(res)
 
       expect(body.error.fields?.email).toBeDefined()
     })
 
-    it('returns 400 for password missing uppercase', async () => {
-      const validPayload = getValidPayload()
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ ...validPayload, password: 'test@12345' })
+    it('returns 400 for a password missing an uppercase letter', async () => {
+      const payload = {
+        ...getValidPayload(),
+        password: 'test@12345',
+      }
+
+      const res = await request(app).post('/api/auth/register').send(payload)
 
       const body = assertValidationError(res)
-
       const passwordErrors = body.error.fields?.password
 
       if (!passwordErrors || passwordErrors.length === 0) {
@@ -252,14 +372,15 @@ describe('POST /api/auth/register', () => {
       expect(passwordErrors[0]).toContain('uppercase')
     })
 
-    it('returns 400 for password missing special character', async () => {
-      const validPayload = getValidPayload()
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ ...validPayload, password: 'Test123456' })
+    it('returns 400 for a password missing a special character', async () => {
+      const payload = {
+        ...getValidPayload(),
+        password: 'Test123456',
+      }
+
+      const res = await request(app).post('/api/auth/register').send(payload)
 
       const body = assertValidationError(res)
-
       const passwordErrors = body.error.fields?.password
 
       if (!passwordErrors || passwordErrors.length === 0) {
@@ -269,14 +390,15 @@ describe('POST /api/auth/register', () => {
       expect(passwordErrors[0]).toContain('special')
     })
 
-    it('returns 400 for password under 8 characters', async () => {
-      const validPayload = getValidPayload()
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ ...validPayload, password: 'T@1a' })
+    it('returns 400 for a password shorter than eight characters', async () => {
+      const payload = {
+        ...getValidPayload(),
+        password: 'T@1a',
+      }
+
+      const res = await request(app).post('/api/auth/register').send(payload)
 
       const body = assertValidationError(res)
-
       const passwordErrors = body.error.fields?.password
 
       if (!passwordErrors || passwordErrors.length === 0) {
@@ -286,7 +408,7 @@ describe('POST /api/auth/register', () => {
       expect(passwordErrors[0]).toContain('8')
     })
 
-    it('returns 400 for missing email', async () => {
+    it('returns 400 when the email address is missing', async () => {
       const res = await request(app).post('/api/auth/register').send({ password: 'Test@12345' })
 
       const body = assertValidationError(res)

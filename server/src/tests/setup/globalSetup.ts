@@ -1,20 +1,22 @@
-import { execSync } from 'child_process'
+import { execSync } from 'node:child_process'
+import { assertSafeTestTargets } from './testEnvironment.js'
 
 export function setup(): void {
-  console.log('\n🔧 Running test database migrations...')
+  // Validate the destination before running any migrations.
+  assertSafeTestTargets()
 
-  // Apply all migrations to the test database
+  console.log('\nRunning test database migrations...')
+
+  // Use the validated DATABASE_URL from the test environment.
+  // Do not hardcode a second database URL here.
   execSync('npx prisma migrate deploy', {
-    env: {
-      ...process.env,
-      DATABASE_URL: 'postgresql://authuser:authpassword@localhost:5432/authdb_test',
-    },
+    env: { ...process.env },
     stdio: 'inherit',
   })
 
-  console.log('✓ Test database ready\n')
+  console.log('Test database ready.\n')
 }
 
 export async function teardown(): Promise<void> {
-  // Nothing to tear down globally — each test file handles its own cleanup
+  // Test connections are closed by the test setup teardown hook.
 }

@@ -475,12 +475,6 @@ class AuthService {
 
     const now = new Date()
 
-    const tokensBefore = await prisma.refreshToken.findMany({
-      where: { userId: resetRecord.user.id },
-    })
-
-    console.log('🟡 TOKENS BEFORE RESET:', tokensBefore)
-
     await prisma.$transaction([
       prisma.passwordReset.update({
         where: { id: resetRecord.id },
@@ -509,12 +503,6 @@ class AuthService {
         },
       }),
     ])
-
-    const tokensAfter = await prisma.refreshToken.findMany({
-      where: { userId: resetRecord.user.id },
-    })
-
-    console.log('🟢 TOKENS AFTER RESET:', tokensAfter)
   }
 
   // ─── Refresh Token ─────────────────────────────────────────────
@@ -642,18 +630,16 @@ class AuthService {
       })
 
       if (accessToken) {
-        console.log('🔐 LOGOUT - accessToken received:', accessToken)
         const accessPayload = verifyAccessToken(accessToken)
-        console.log('🔐 LOGOUT - jti:', accessPayload.jti)
         const decoded = jwt.decode(accessToken) as { exp?: number }
 
         const ttl = decoded?.exp
           ? Math.max(decoded.exp - Math.floor(Date.now() / 1000), 0)
           : 60 * 15
-        console.log('🔌 REDIS READY?', redisClient.isReady)
-        await redisClient.set(`blacklist:${accessPayload.jti}`, '1', { EX: ttl })
-        const value = await redisClient.get(`blacklist:${accessPayload.jti}`)
-        console.log('🧠 REDIS CHECK AFTER SET:', value)
+
+        await redisClient.set(`blacklist:${accessPayload.jti}`, '1', {
+          EX: ttl,
+        })
       }
 
       await prisma.auditLog.create({

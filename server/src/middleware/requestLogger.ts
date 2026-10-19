@@ -14,7 +14,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       {
         requestId: req.id,
         method: req.method,
-        url: req.url,
+        url: req.path,
         statusCode: res.statusCode,
         ms,
         ip: req.ip,
@@ -22,7 +22,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
         // Only log userId if the request was authenticated
         userId: req.user?.sub ?? undefined,
       },
-      `${req.method} ${req.url} ${res.statusCode} ${ms}ms`
+      `${req.method} ${req.path} ${res.statusCode} ${ms}ms`
     )
   })
 

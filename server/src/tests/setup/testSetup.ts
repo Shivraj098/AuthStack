@@ -1,13 +1,20 @@
-import { afterAll, beforeEach } from 'vitest'
-import { prisma } from '../../config/database.js'
-import { redisClient, connectRedis } from '../../config/redis.js'
-import { initRateLimiters } from '../../middleware/rateLimiter.js'
-import * as dotenv from 'dotenv'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { afterAll, beforeEach, vi } from 'vitest'
+import { assertSafeTestTargets } from './testEnvironment.js'
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env.test') })
+// Validate targets before importing modules that initialize clients.
+assertSafeTestTargets()
+// Prevent automated tests from contacting the real email provider.
+vi.mock('../../services/email.service.js', () => ({
+  emailService: {
+    sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+    sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+  },
+}))
+
+// These modules can only load after the safety check passes.
+const { prisma } = await import('../../config/database.js')
+const { redisClient, connectRedis } = await import('../../config/redis.js')
+const { initRateLimiters } = await import('../../middleware/rateLimiter.js')
 
 // ============================================
 // TOP-LEVEL INITIALIZATION (runs once when file is imported)
@@ -20,6 +27,7 @@ await prisma.$connect()
 // PER-TEST CLEANUP + SEEDING (beforeEach = best isolation)
 // ============================================
 beforeEach(async () => {
+  vi.clearAllMocks()
   await prisma.auditLog.deleteMany()
   await prisma.mfaBackupCode.deleteMany()
   await prisma.mfaSecret.deleteMany()

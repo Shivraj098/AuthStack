@@ -1,5 +1,11 @@
+import { assertSafeTestTargets } from './src/tests/setup/testEnvironment.js'
 import { defineConfig } from 'vitest/config'
+// Mark the Vitest process as a test process before application
+// configuration modules are imported by the test suite.
+process.env.NODE_ENV = 'test'
 
+// Fail before global setup, migrations, or test cleanup can run.
+assertSafeTestTargets()
 export default defineConfig({
   test: {
     // Force single worker (no parallel workers)

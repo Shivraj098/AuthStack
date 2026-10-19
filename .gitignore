@@ -9,6 +9,7 @@ build/
 .env
 .env.local
 .env.production
+.env.test
 
 # Prisma generated client
 server/src/generated/
