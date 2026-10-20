@@ -1,11 +1,17 @@
-import { assertSafeTestTargets } from './src/tests/setup/testEnvironment.js'
+import { assertLocalTestEnvironment } from './src/tests/setup/testEnvironment.js'
 import { defineConfig } from 'vitest/config'
+import dotenv from 'dotenv'
+import { fileURLToPath } from 'node:url'
 // Mark the Vitest process as a test process before application
 // configuration modules are imported by the test suite.
+dotenv.config({
+  path: fileURLToPath(new URL('../.env.test', import.meta.url)),
+  override: false,
+})
 process.env.NODE_ENV = 'test'
 
 // Fail before global setup, migrations, or test cleanup can run.
-assertSafeTestTargets()
+assertLocalTestEnvironment()
 export default defineConfig({
   test: {
     // Force single worker (no parallel workers)

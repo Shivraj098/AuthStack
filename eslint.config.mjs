@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint'
 import reactPlugin from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import prettier from 'eslint-config-prettier'
+import globals from 'globals'
 
 export default tseslint.config(
   js.configs.recommended,
@@ -47,6 +48,21 @@ export default tseslint.config(
       },
     },
   },
+  {
+  files: ['scripts/smoke-check.mjs'],
+  extends: [tseslint.configs.disableTypeChecked],
+  languageOptions: {
+    globals: {
+      ...globals.node,
+      URL: 'readonly',
+      fetch: 'readonly',
+      AbortSignal: 'readonly',
+    },
+    parserOptions: {
+      projectService: false,
+    },
+  },
+},
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/*.js'],
   }

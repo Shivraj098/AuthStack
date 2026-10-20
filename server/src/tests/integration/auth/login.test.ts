@@ -119,9 +119,9 @@ describe('POST /api/auth/login', () => {
 
       const refreshCookie = extractRefreshCookie(res)
 
-      expect(refreshCookie).toContain('HttpOnly')
-      expect(refreshCookie).toContain('SameSite=none')
-      expect(refreshCookie).toContain('Path=/api/auth')
+      expect(refreshCookie.toLowerCase()).toContain('httponly')
+      expect(refreshCookie.toLowerCase()).toContain('samesite=lax')
+      expect(refreshCookie.toLowerCase()).toContain('path=/api/auth')
     })
 
     it('access token payload is correct', async () => {

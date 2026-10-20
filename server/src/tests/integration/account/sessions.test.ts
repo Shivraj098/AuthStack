@@ -141,6 +141,22 @@ describe('GET /api/account/sessions', () => {
     expect(records).toHaveLength(ids.length)
     expect(records.every((r) => r.userId === user1.id)).toBe(true)
   })
+  it('rejects an access token after its associated session is revoked', async () => {
+    const user = await createUser()
+    const { token, refreshToken } = await loginUser(user)
+
+    const logoutResponse = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', `refreshToken=${refreshToken}`)
+
+    expect(logoutResponse.status).toBe(200)
+
+    const protectedResponse = await request(app)
+      .get('/api/account/sessions')
+      .set('Authorization', `Bearer ${token}`)
+
+    expect(protectedResponse.status).toBe(401)
+  })
 
   it('does not return revoked sessions', async () => {
     const user = await createUser()

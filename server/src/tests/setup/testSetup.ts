@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, vi } from 'vitest'
-import { assertSafeTestTargets } from './testEnvironment.js'
+import { assertLocalTestEnvironment } from './testEnvironment.js'
 
 // Validate targets before importing modules that initialize clients.
-assertSafeTestTargets()
+
 // Prevent automated tests from contacting the real email provider.
 vi.mock('../../services/email.service.js', () => ({
   emailService: {
@@ -19,6 +19,7 @@ const { initRateLimiters } = await import('../../middleware/rateLimiter.js')
 // ============================================
 // TOP-LEVEL INITIALIZATION (runs once when file is imported)
 // ============================================
+assertLocalTestEnvironment()
 await connectRedis()
 initRateLimiters()
 await prisma.$connect()

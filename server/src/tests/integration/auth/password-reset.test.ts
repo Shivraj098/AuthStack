@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import request, { Response } from 'supertest'
 import { createTestApp } from '../../helpers/app.helpers.js'
 import { createUser } from '../../factories/user.factories.js'
 import { prisma } from '../../../config/database.js'
 import { generateSecureToken, hashToken, getExpiryDate } from '../../../utils/token.js'
 import type { Express } from 'express'
+import { emailService } from '../../../services/email.service.js'
 
 let app: Express
 
@@ -98,6 +99,37 @@ describe('POST /api/auth/forgot-password', () => {
     const nonExistingBody = assertMessageResponse(nonExistingRes, 200)
 
     expect(existingBody.message).toBe(nonExistingBody.message)
+  })
+  it('keeps a generic successful response when email delivery fails', async () => {
+    const user = await createUser()
+
+    const sendPasswordResetEmailSpy = vi.spyOn(emailService, 'sendPasswordResetEmail')
+
+    sendPasswordResetEmailSpy.mockRejectedValueOnce(new Error('Simulated email-provider failure'))
+
+    const response = await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: user.email })
+
+    expect(response.status).toBe(200)
+
+    expect(response.status).toBe(200)
+
+    const body: unknown = response.body
+
+    if (typeof body !== 'object' || body === null) {
+      throw new Error('Expected response body to be an object')
+    }
+
+    if (!('success' in body) || body.success !== true) {
+      throw new Error('Expected success to be true')
+    }
+
+    if (!('message' in body) || typeof body.message !== 'string') {
+      throw new Error('Expected response message to be a string')
+    }
+
+    expect(body.message).toContain('If that email is registered')
   })
 
   it('creates a password reset record for existing user', async () => {
