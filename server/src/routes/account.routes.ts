@@ -20,7 +20,8 @@ router.delete('/sessions/:id', async (req: Request, res: Response) => {
 router.delete('/sessions', async (req: Request, res: Response) => {
   const user = req.user!
 
-  const result = await accountService.revokeOtherSessions(user.sub, user.jti)
+  const result = await accountService.revokeOtherSessions(user.sub, user.tokenId)
+
   res.json({ success: true, ...result })
 })
 

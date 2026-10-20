@@ -166,22 +166,35 @@ class AuthService {
       return { message: 'Email already verified. You can sign in.' }
     }
 
+    const now = new Date()
+
     await prisma.$transaction(async (tx) => {
-      await tx.emailVerification.update({
-        where: { id: verification.id },
-        data: { usedAt: new Date() },
+      const consumed = await tx.emailVerification.updateMany({
+        where: {
+          id: verification.id,
+          usedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: {
+          usedAt: now,
+        },
       })
+
+      if (consumed.count !== 1) {
+        throw new AuthenticationError('Invalid or expired verification token')
+      }
+
       await tx.user.update({
         where: { id: verification.user.id },
         data: { isVerified: true },
       })
-    })
 
-    await prisma.auditLog.create({
-      data: {
-        userId: verification.user.id,
-        event: 'EMAIL_VERIFIED',
-      },
+      await tx.auditLog.create({
+        data: {
+          userId: verification.user.id,
+          event: 'EMAIL_VERIFIED',
+        },
+      })
     })
 
     return { message: 'Email verified successfully. You can now sign in.' }
@@ -475,34 +488,44 @@ class AuthService {
 
     const now = new Date()
 
-    await prisma.$transaction([
-      prisma.passwordReset.update({
-        where: { id: resetRecord.id },
-        data: { usedAt: now },
-      }),
-
-      prisma.user.update({
-        where: { id: resetRecord.user.id },
-        data: { passwordHash: newPasswordHash },
-      }),
-
-      prisma.refreshToken.updateMany({
+    await prisma.$transaction(async (tx) => {
+      const consumed = await tx.passwordReset.updateMany({
         where: {
+          id: resetRecord.id,
           userId: resetRecord.user.id,
+          usedAt: null,
+          expiresAt: { gt: now },
         },
         data: {
-          revokedAt: now, // ✅ SAME timestamp
+          usedAt: now,
         },
-      }),
+      })
 
-      prisma.auditLog.create({
+      if (consumed.count !== 1) {
+        throw new AuthenticationError('Invalid or expired reset token')
+      }
+
+      await tx.user.update({
+        where: { id: resetRecord.user.id },
+        data: { passwordHash: newPasswordHash },
+      })
+
+      await tx.refreshToken.updateMany({
+        where: {
+          userId: resetRecord.user.id,
+          revokedAt: null,
+        },
+        data: { revokedAt: now },
+      })
+
+      await tx.auditLog.create({
         data: {
           userId: resetRecord.user.id,
           event: 'PASSWORD_RESET_COMPLETED',
           metadata: { email: resetRecord.user.email },
         },
-      }),
-    ])
+      })
+    })
   }
 
   // ─── Refresh Token ─────────────────────────────────────────────
@@ -513,6 +536,7 @@ class AuthService {
    * and immediately revoke ALL sessions for that user. This is the gold standard
    * for refresh token security (see: OAuth 2.1, Auth0, Clerk, etc.).
    */
+
   async refresh(
     rawRefreshToken: string,
     meta: { ip?: string; userAgent?: string }
@@ -528,6 +552,7 @@ class AuthService {
             email: true,
             isActive: true,
             isVerified: true,
+            deletedAt: true,
             roles: {
               select: { role: { select: { name: true } } },
             },
@@ -536,70 +561,73 @@ class AuthService {
       },
     })
 
-    if (!tokenRecord) {
+    if (!tokenRecord || tokenRecord.userId !== payload.sub) {
       throw new AuthenticationError('Invalid refresh token')
     }
 
     const incomingHash = hashToken(rawRefreshToken)
-    const incomingBuffer = Buffer.from(incomingHash)
-    const storedBuffer = Buffer.from(tokenRecord.tokenHash)
 
-    if (incomingBuffer.length !== storedBuffer.length) {
-      throw new AuthenticationError('Invalid refresh token')
-    }
+    // Compare hashes without exposing a token or its hash in logs.
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(incomingHash, 'hex'),
+        Buffer.from(tokenRecord.tokenHash, 'hex')
+      )
+    ) {
+      await this.revokeSessionsForRefreshSecurityEvent(
+        tokenRecord.userId,
+        'REFRESH_TOKEN_INTEGRITY_FAILURE',
+        'refresh_token_hash_mismatch',
+        meta
+      )
 
-    const hashMatches = crypto.timingSafeEqual(incomingBuffer, storedBuffer)
-
-    if (!hashMatches) {
-      await this.revokeAllSessions(tokenRecord.userId)
       throw new AuthenticationError('Token integrity check failed')
     }
 
-    if (tokenRecord.revokedAt) {
-      await this.revokeAllSessions(tokenRecord.userId)
+    // A token already revoked before this request was inspected is a replay.
+    // A concurrent rotation that loses the conditional update below is
+    // handled separately and does not revoke every other session.
+    if (tokenRecord.revokedAt !== null) {
+      await this.revokeSessionsForRefreshSecurityEvent(
+        tokenRecord.userId,
+        'REFRESH_TOKEN_REUSE_DETECTED',
+        'revoked_refresh_token_reused',
+        meta
+      )
+
       throw new AuthenticationError(
         'Session invalidated due to suspicious activity. Please sign in again.'
       )
     }
 
-    if (tokenRecord.expiresAt < new Date()) {
+    const now = new Date()
+
+    if (tokenRecord.expiresAt.getTime() <= now.getTime()) {
       throw new AuthenticationError('Refresh token expired. Please sign in again.')
     }
+    if (tokenRecord.user.deletedAt !== null) {
+      await this.revokeAllSessions(tokenRecord.userId)
 
-    if (!tokenRecord.user.isActive) {
-      throw new AuthenticationError('This account has been deactivated.')
+      throw new AuthenticationError('This account is no longer available.')
+    }
+
+    if (!tokenRecord.user.isActive || tokenRecord.user.deletedAt !== null) {
+      throw new AuthenticationError('This account is not available.')
     }
 
     if (!tokenRecord.user.isVerified) {
       throw new AuthenticationError('Email is not verified.')
     }
 
-    const roles = tokenRecord.user.roles.map((ur) => ur.role.name)
+    const roles = tokenRecord.user.roles.map(({ role }) => role.name)
 
+    // Generate the replacement credentials before consuming the old token.
+    // If token signing fails, the existing session remains usable.
     const newTokenId = crypto.randomUUID()
+
     const newRefreshToken = signRefreshToken({
       sub: tokenRecord.user.id,
       tokenId: newTokenId,
-    })
-    const newRefreshTokenHash = hashToken(newRefreshToken)
-    const newExpiresAt = new Date()
-    newExpiresAt.setDate(newExpiresAt.getDate() + 7)
-
-    await prisma.$transaction(async (tx) => {
-      await tx.refreshToken.update({
-        where: { id: tokenRecord.id },
-        data: { revokedAt: new Date() },
-      })
-      await tx.refreshToken.create({
-        data: {
-          id: newTokenId,
-          userId: tokenRecord.user.id,
-          tokenHash: newRefreshTokenHash,
-          deviceInfo: meta.userAgent ?? tokenRecord.deviceInfo,
-          ipAddress: meta.ip ?? tokenRecord.ipAddress,
-          expiresAt: newExpiresAt,
-        },
-      })
     })
 
     const newAccessToken = signAccessToken({
@@ -609,7 +637,63 @@ class AuthService {
       tokenId: newTokenId,
     })
 
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken }
+    const newRefreshTokenHash = hashToken(newRefreshToken)
+    const newExpiresAt = new Date(now)
+    newExpiresAt.setDate(newExpiresAt.getDate() + 7)
+
+    const rotationSucceeded = await prisma.$transaction(async (tx) => {
+      // This conditional update is the single-winner check.
+      // Only one concurrent request can change this row from active to revoked.
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          id: tokenRecord.id,
+          userId: tokenRecord.userId,
+          tokenHash: incomingHash,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: {
+          revokedAt: now,
+        },
+      })
+
+      if (revoked.count !== 1) {
+        return false
+      }
+
+      await tx.refreshToken.create({
+        data: {
+          id: newTokenId,
+          userId: tokenRecord.userId,
+          tokenHash: newRefreshTokenHash,
+          deviceInfo: meta.userAgent ?? tokenRecord.deviceInfo,
+          ipAddress: meta.ip ?? tokenRecord.ipAddress,
+          expiresAt: newExpiresAt,
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId: tokenRecord.userId,
+          event: 'REFRESH_TOKEN_ROTATED',
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+        },
+      })
+
+      return true
+    })
+
+    if (!rotationSucceeded) {
+      // Another request may have rotated or revoked this token after the
+      // initial read. Reject this request without revoking other sessions.
+      throw new AuthenticationError('Refresh token has already been used. Please retry sign-in.')
+    }
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+    }
   }
 
   // ─── Logout ────────────────────────────────────────────────────
@@ -766,6 +850,36 @@ class AuthService {
   }
 
   // ─── Private helpers ───────────────────────────────────────────
+  private async revokeSessionsForRefreshSecurityEvent(
+    userId: string,
+    event: string,
+    reason: string,
+    meta: { ip?: string; userAgent?: string }
+  ): Promise<void> {
+    const now = new Date()
+
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: now,
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          event,
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+          metadata: { reason },
+        },
+      })
+    })
+  }
   private async revokeAllSessions(userId: string): Promise<void> {
     await prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },

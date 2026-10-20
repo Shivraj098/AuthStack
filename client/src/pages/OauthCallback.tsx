@@ -16,13 +16,22 @@ export function OAuthCallback() {
     processed.current = true
 
     async function handleCallback() {
-      const hash = window.location.hash.slice(1) // Remove the '#'
+      const hash = window.location.hash.slice(1)
       const params = new URLSearchParams(hash)
       const token = params.get('token')
+      const mfaPendingToken = params.get('mfaPendingToken')
       const isNew = params.get('new') === 'true'
 
-      // Immediately clean the token from the URL — security hygiene
+      // Remove sensitive fragment values from the visible URL.
       window.history.replaceState(null, '', '/oauth/callback')
+
+      if (mfaPendingToken) {
+        void navigate('/mfa', {
+          state: { mfaPendingToken },
+          replace: true,
+        })
+        return
+      }
 
       if (!token) {
         void navigate('/login?error=oauth_failed', { replace: true })

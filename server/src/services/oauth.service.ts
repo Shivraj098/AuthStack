@@ -4,9 +4,10 @@ import { prisma } from '../config/database.js'
 import { redisClient } from '../config/redis.js'
 import { env } from '../config/env.js'
 import { AppError, AuthenticationError } from '../utils/error.js'
-import { signAccessToken, signRefreshToken } from '../utils/jwt.js'
 import { hashToken } from '../utils/token.js'
 import { randomUUID } from 'crypto'
+import { mfaService } from './mfa.service.js'
+import { signAccessToken, signRefreshToken, signMfaPendingToken } from '../utils/jwt.js'
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -104,21 +105,28 @@ class OAuthService {
     code: string,
     state: string,
     meta: { ip?: string; userAgent?: string }
-  ): Promise<{
-    accessToken: string
-    refreshToken: string
-    isNewUser: boolean
-  }> {
-    // Validate state — prevents CSRF
+  ): Promise<
+    | {
+        mfaRequired: true
+        mfaPendingToken: string
+        isNewUser: boolean
+      }
+    | {
+        mfaRequired: false
+        accessToken: string
+        refreshToken: string
+        isNewUser: boolean
+      }
+  > {
     const stateKey = `oauth:${state}`
-    const stored = await redisClient.get(stateKey)
+
+    // Atomically retrieve and delete the state.
+    // Only one callback can consume this value.
+    const stored = await redisClient.getDel(stateKey)
 
     if (!stored) {
       throw new AuthenticationError('Invalid or expired OAuth state. Please try again.')
     }
-
-    // Delete immediately — state is single-use
-    await redisClient.del(stateKey)
 
     const { codeVerifier, provider: storedProvider } = JSON.parse(stored) as {
       codeVerifier: string
@@ -149,7 +157,30 @@ class OAuthService {
     // Find or create the user in our database
     const { user, isNewUser } = await this.findOrCreateUser(profile, provider)
 
-    // Issue our own tokens — not the provider's
+    // Require the second factor before issuing application tokens.
+    const mfaStatus = await mfaService.getStatus(user.id)
+
+    if (mfaStatus.isEnabled) {
+      const mfaPendingToken = signMfaPendingToken(user.id)
+
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          event: 'USER_LOGIN_OAUTH_MFA_REQUIRED',
+          ipAddress: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+          metadata: { provider },
+        },
+      })
+
+      return {
+        mfaRequired: true,
+        mfaPendingToken,
+        isNewUser,
+      }
+    }
+
+    // Issue application tokens only when MFA is not required.
     const roles = user.roles.map((ur) => ur.role.name)
 
     const tokenId = randomUUID()
@@ -186,7 +217,12 @@ class OAuthService {
       },
     })
 
-    return { accessToken, refreshToken, isNewUser }
+    return {
+      mfaRequired: false,
+      accessToken,
+      refreshToken,
+      isNewUser,
+    }
   }
 
   // ── Private helpers ────────────────────────────────────────────
@@ -357,6 +393,9 @@ class OAuthService {
 
     if (existingOAuth) {
       // Known OAuth account — update profile data that may have changed
+      if (existingOAuth.user.deletedAt !== null || !existingOAuth.user.isActive) {
+        throw new AuthenticationError('This account cannot sign in.')
+      }
       await prisma.user.update({
         where: { id: existingOAuth.userId },
         data: {
@@ -381,6 +420,9 @@ class OAuthService {
     if (existingUser) {
       // Link this OAuth provider to the existing account
       // Only safe because we verified the email is verified by the provider
+      if (existingUser.deletedAt !== null || !existingUser.isActive) {
+        throw new AuthenticationError('This account cannot sign in.')
+      }
       await prisma.oAuthAccount.create({
         data: {
           userId: existingUser.id,

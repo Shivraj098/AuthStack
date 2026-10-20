@@ -10,9 +10,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: Typecheck, lint and test
+    name: Typecheck, lint, and test
     runs-on: ubuntu-latest
 
     services:
@@ -28,20 +32,20 @@ jobs:
           --health-cmd "pg_isready -U authuser -d authdb_test"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
       redis:
-        image: redis:8-alpine
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -59,11 +63,11 @@ jobs:
       - name: Typecheck client
         run: npm run typecheck --workspace=client
 
-      - name: Lint all workspaces
+      - name: Lint
         run: npm run lint
 
       - name: Run server tests with coverage
-        working-directory: server
+        run: npm run test:coverage --workspace=server
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://authuser:authpassword@localhost:5432/authdb_test
@@ -72,31 +76,30 @@ jobs:
           JWT_REFRESH_SECRET: ci-test-refresh-secret-minimum-32-characters
           JWT_ACCESS_EXPIRES_IN: 15m
           JWT_REFRESH_EXPIRES_IN: 7d
-          RESEND_API_KEY: test-placeholder-not-a-real-key
-          EMAIL_FROM: authstack-tests@example.test
+          RESEND_API_KEY: re_ci_placeholder_not_a_real_key
+          EMAIL_FROM: noreply@example.test
           CLIENT_URL: http://localhost:5173
-          SERVER_URL: http://localhost:3001
-          GOOGLE_CLIENT_ID: test-google-client-id
-          GOOGLE_CLIENT_SECRET: test-google-client-secret
-          GITHUB_CLIENT_ID: test-github-client-id
-          GITHUB_CLIENT_SECRET: test-github-client-secret
-        run: npm run test:coverage
+          SERVER_URL: http://localhost:3000
+          GOOGLE_CLIENT_ID: ci-google-client-id
+          GOOGLE_CLIENT_SECRET: ci-google-client-secret
+          GITHUB_CLIENT_ID: ci-github-client-id
+          GITHUB_CLIENT_SECRET: ci-github-client-secret
 
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: server-coverage
+          name: coverage-report
           path: server/coverage/
-          if-no-files-found: warn
-          retention-days: 7
+          if-no-files-found: ignore
 
   build:
-    name: Build server and client
+    name: Build applications
     runs-on: ubuntu-latest
+    needs: test
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js

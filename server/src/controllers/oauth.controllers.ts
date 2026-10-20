@@ -41,6 +41,12 @@ class OAuthController {
     }
 
     const result = await oauthService.handleCallback(provider, code, state, meta)
+    if (result.mfaRequired) {
+      res.redirect(
+        `${env.CLIENT_URL}/oauth/callback#mfaPendingToken=${encodeURIComponent(result.mfaPendingToken)}`
+      )
+      return
+    }
 
     // Set refresh token cookie — same settings as regular login
     res.cookie('refreshToken', result.refreshToken, {
