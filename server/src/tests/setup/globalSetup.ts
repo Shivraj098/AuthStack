@@ -1,22 +1,55 @@
 import { execSync } from 'node:child_process'
-import { assertSafeTestTargets } from './testEnvironment.js'
+import dotenv from 'dotenv'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-export function setup(): void {
-  // Validate the destination before running any migrations.
-  assertSafeTestTargets()
+const setupDirectory = fileURLToPath(new URL('.', import.meta.url))
+const projectRoot = path.resolve(setupDirectory, '../../../../')
+const localHosts = new Set(['localhost', '127.0.0.1'])
 
-  console.log('\nRunning test database migrations...')
-
-  // Use the validated DATABASE_URL from the test environment.
-  // Do not hardcode a second database URL here.
-  execSync('npx prisma migrate deploy', {
-    env: { ...process.env },
-    stdio: 'inherit',
+function getLocalTestDatabaseUrl(): string {
+  dotenv.config({
+    path: path.join(projectRoot, '.env.test'),
+    override: false,
   })
 
-  console.log('Test database ready.\n')
+  const databaseUrl = process.env['DATABASE_URL']
+
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is required for test setup')
+  }
+
+  let parsedUrl: URL
+
+  try {
+    parsedUrl = new URL(databaseUrl)
+  } catch {
+    throw new Error('DATABASE_URL is invalid for test setup')
+  }
+
+  const databaseName = parsedUrl.pathname.replace(/^\/+/, '')
+
+  if (!localHosts.has(parsedUrl.hostname) || databaseName !== 'authdb_test') {
+    throw new Error('Refusing to run test migrations outside local authdb_test')
+  }
+
+  return databaseUrl
+}
+
+export function setup(): void {
+  const databaseUrl = getLocalTestDatabaseUrl()
+
+  execSync('npx prisma migrate deploy', {
+    cwd: path.join(projectRoot, 'server'),
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      DATABASE_URL: databaseUrl,
+    },
+    stdio: 'inherit',
+  })
 }
 
 export async function teardown(): Promise<void> {
-  // Test connections are closed by the test setup teardown hook.
+  // No global teardown required.
 }

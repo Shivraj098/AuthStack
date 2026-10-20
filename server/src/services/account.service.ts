@@ -83,23 +83,34 @@ class AccountService {
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: newHash },
-    })
+    const now = new Date()
 
-    // Revoke all sessions — re-login required
-    await prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    })
+    await prisma.$transaction(async (tx) => {
+      // Update the password.
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash: newHash },
+      })
 
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        event: 'PASSWORD_CHANGED',
-        metadata: { email: user.email },
-      },
+      // Revoke all active refresh-token sessions.
+      await tx.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: now,
+        },
+      })
+
+      // Record the successful password change.
+      await tx.auditLog.create({
+        data: {
+          userId,
+          event: 'PASSWORD_CHANGED',
+          metadata: { email: user.email },
+        },
+      })
     })
 
     return { message: 'Password changed. Please sign in again.' }

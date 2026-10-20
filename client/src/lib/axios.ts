@@ -20,11 +20,13 @@ export function getAccessToken(): string | null {
   return accessToken
 }
 
-const apiUrl: string = import.meta.env.VITE_API_URL
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
+
+const apiBaseUrl = configuredApiUrl ? configuredApiUrl.replace(/\/+$/, '') : '/api'
 
 // Create the main Axios instance
 export const api: AxiosInstance = axios.create({
-  baseURL: apiUrl ?? '/api',
+  baseURL: apiBaseUrl ?? '/api',
   withCredentials: true, // Sends httpOnly refresh token cookie automatically
   headers: {
     'Content-Type': 'application/json',
@@ -70,11 +72,11 @@ api.interceptors.response.use(
   (response: AxiosResponse) => response,
 
   async (error: AxiosError) => {
-    const originalRequest = error.config as CustomAxiosRequestConfig
+    const originalRequest = error.config as CustomAxiosRequestConfig | undefined
 
     // Only handle 401s, and only once per request
     // _retry flag prevents infinite loops
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)))
     }
 

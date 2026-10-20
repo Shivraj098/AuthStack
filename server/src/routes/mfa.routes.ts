@@ -5,6 +5,7 @@ import { authService } from '../services/auth.service.js'
 import { env } from '../config/env.js'
 import { z } from 'zod'
 import { validate } from '../middleware/validate.js'
+import { AuthenticationError } from '../utils/error.js'
 
 const router = Router()
 
@@ -71,7 +72,7 @@ router.use(requireAuth)
 router.get('/status', async (req: Request, res: Response) => {
   // Defensive check instead of non-null assertion
   if (!req.user?.sub) {
-    throw new Error('Unauthorized') // will be caught by error handler
+    throw new AuthenticationError() // will be caught by error handler
   }
 
   const status = await mfaService.getStatus(req.user.sub)
@@ -80,7 +81,7 @@ router.get('/status', async (req: Request, res: Response) => {
 
 router.post('/setup', async (req: Request, res: Response) => {
   if (!req.user?.sub) {
-    throw new Error('Unauthorized')
+    throw new AuthenticationError()
   }
 
   const setup = await mfaService.generateSetup(req.user.sub)
@@ -89,7 +90,7 @@ router.post('/setup', async (req: Request, res: Response) => {
 
 router.post('/verify-setup', validate(codeSchema), async (req: Request, res: Response) => {
   if (!req.user?.sub) {
-    throw new Error('Unauthorized')
+    throw new AuthenticationError()
   }
 
   const { code } = req.body as CodeBody
@@ -99,7 +100,7 @@ router.post('/verify-setup', validate(codeSchema), async (req: Request, res: Res
 
 router.post('/disable', validate(disableSchema), async (req: Request, res: Response) => {
   if (!req.user?.sub) {
-    throw new Error('Unauthorized')
+    throw new AuthenticationError()
   }
 
   const { password, code } = req.body as DisableBody

@@ -714,16 +714,28 @@ class AuthService {
       })
 
       if (accessToken) {
-        const accessPayload = verifyAccessToken(accessToken)
-        const decoded = jwt.decode(accessToken) as { exp?: number }
+        try {
+          const accessPayload = verifyAccessToken(accessToken)
+          const decoded = jwt.decode(accessToken)
 
-        const ttl = decoded?.exp
-          ? Math.max(decoded.exp - Math.floor(Date.now() / 1000), 0)
-          : 60 * 15
+          const expiresAt =
+            typeof decoded === 'object' && decoded !== null && typeof decoded.exp === 'number'
+              ? decoded.exp
+              : undefined
 
-        await redisClient.set(`blacklist:${accessPayload.jti}`, '1', {
-          EX: ttl,
-        })
+          const ttl =
+            expiresAt === undefined ? 0 : Math.max(expiresAt - Math.floor(Date.now() / 1000), 0)
+
+          if (ttl > 0) {
+            await redisClient.set(`blacklist:${accessPayload.jti}`, '1', { EX: ttl })
+          }
+        } catch (error: unknown) {
+          // An invalid or expired access token doesn't undo refresh-token
+          // revocation. Unexpected errors should still reach the caller.
+          if (!(error instanceof AuthenticationError)) {
+            throw error
+          }
+        }
       }
 
       await prisma.auditLog.create({

@@ -1,55 +1,60 @@
-import { Request, Response, NextFunction } from 'express'
+import type { Request, Response, NextFunction } from 'express'
 import { adminService } from '../services/admin.service.js'
-import { z } from 'zod'
+import type {
+  AdminAuditLogsQuery,
+  AdminRoleBody,
+  AdminUsersQuery,
+} from '../validators/admin.schema.js'
+import { AuthenticationError, ValidationError } from '../utils/error.js'
 
-const paginationSchema = z.object({
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(20),
-  search: z.string().optional(),
-})
-const roleSchema = z.object({
-  role: z.string().min(1, 'Role is required'),
-})
+function getRequiredParam(req: Request, name: string): string {
+  const param = req.params[name]
+  const value = Array.isArray(param) ? param[0] : param
 
-function getparams(param: string | string[] | undefined): string | undefined {
-  return Array.isArray(param) ? param[0] : param
+  if (!value) {
+    throw new ValidationError('Validation failed', {
+      [name]: [`${name} is required`],
+    })
+  }
+
+  return value
 }
 
 class AdminController {
   async listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const query = paginationSchema.parse(req.query)
     try {
+      const query = req.query as unknown as AdminUsersQuery
       const result = await adminService.listUsers(query)
+
       res.json({ success: true, data: result })
     } catch (error) {
       next(error)
     }
   }
 
-  async getUser(req: Request, res: Response): Promise<void> {
-    const id = getparams(req.params['id'])
-
+  async getUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      if (!id) {
-        res.status(400).json({ success: false, message: 'User ID is required' })
-        return
-      }
-    } catch (err) {
-      res
-        .status(401)
-        .json({ success: false, message: err instanceof Error ? err.message : 'Unauthorized' })
-      return
-    }
+      const id = getRequiredParam(req, 'id')
+      const user = await adminService.getUserById(id)
 
-    const user = await adminService.getUserById(id)
-    res.json({ success: true, data: user })
+      res.json({ success: true, data: user })
+    } catch (error) {
+      next(error)
+    }
   }
 
   async assignRole(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const id = getparams(req.params['id'])
-    const { role } = roleSchema.parse(req.body)
     try {
-      const result = await adminService.assignRole(id!, role, req.user!.sub)
+      const id = getRequiredParam(req, 'id')
+      const adminId = req.user?.sub
+
+      if (!adminId) {
+        throw new AuthenticationError()
+      }
+
+      const { role } = req.body as AdminRoleBody
+      const result = await adminService.assignRole(id, role, adminId)
+
       res.json({ success: true, data: result })
     } catch (error) {
       next(error)
@@ -57,70 +62,69 @@ class AdminController {
   }
 
   async removeRole(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const id = getparams(req.params['id'])
-
-    if (!id) {
-      res.status(400).json({
-        success: false,
-        message: 'User ID is required',
-      })
-      return
-    }
-
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        message: 'Unauthorized',
-      })
-      return
-    }
-
-    const { role } = roleSchema.parse(req.body)
-
     try {
-      const result = await adminService.removeRole(id, role, req.user.sub)
+      const id = getRequiredParam(req, 'id')
+      const adminId = req.user?.sub
+
+      if (!adminId) {
+        throw new AuthenticationError()
+      }
+
+      const { role } = req.body as AdminRoleBody
+      const result = await adminService.removeRole(id, role, adminId)
+
       res.json({ success: true, data: result })
     } catch (error) {
       next(error)
     }
   }
+
   async toggleActive(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const id = getparams(req.params['id'])
     try {
-      const result = await adminService.toggleUserActive(id!, req.user!.sub)
+      const id = getRequiredParam(req, 'id')
+      const adminId = req.user?.sub
+
+      if (!adminId) {
+        throw new AuthenticationError()
+      }
+
+      const result = await adminService.toggleUserActive(id, adminId)
+
       res.json({ success: true, data: result })
     } catch (error) {
       next(error)
     }
   }
 
-  async getAuditLogs(req: Request, res: Response): Promise<void> {
-    const {
-      page = '1',
-      limit = '25',
-      userId,
-      event,
-      startDate,
-      endDate,
-      ip,
-    } = req.query as Record<string, string | undefined>
+  async getAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { page, limit, userId, event, startDate, endDate, ip } =
+        req.query as unknown as AdminAuditLogsQuery
 
-    const result = await adminService.getAuditLogs({
-      page: Number(page),
-      limit: Math.min(Number(limit), 100),
-      ...(userId !== undefined && { userId }),
-      ...(event !== undefined && { event }),
-      ...(startDate !== undefined && { startDate }),
-      ...(endDate !== undefined && { endDate }),
-      ...(ip !== undefined && { ip }),
-    })
+      const result = await adminService.getAuditLogs({
+        page,
+        limit,
+        ...(userId !== undefined && { userId }),
+        ...(event !== undefined && { event }),
+        ...(startDate !== undefined && { startDate }),
+        ...(endDate !== undefined && { endDate }),
+        ...(ip !== undefined && { ip }),
+      })
 
-    res.json({ success: true, data: result })
+      res.json({ success: true, data: result })
+    } catch (error) {
+      next(error)
+    }
   }
 
-  async listRoles(req: Request, res: Response): Promise<void> {
-    const roles = await adminService.listRoles()
-    res.json({ success: true, data: roles })
+  async listRoles(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const roles = await adminService.listRoles()
+
+      res.json({ success: true, data: roles })
+    } catch (error) {
+      next(error)
+    }
   }
 }
 

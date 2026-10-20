@@ -274,10 +274,19 @@ class AdminService {
     }
 
     if (startDate || endDate) {
-      where['createdAt'] = {
-        ...(startDate ? { gte: new Date(startDate) } : {}),
-        ...(endDate ? { lte: new Date(endDate) } : {}),
+      const createdAt: Prisma.DateTimeFilter = {}
+
+      if (startDate) {
+        createdAt.gte = new Date(`${startDate}T00:00:00.000Z`)
       }
+
+      if (endDate) {
+        const endExclusive = new Date(`${endDate}T00:00:00.000Z`)
+        endExclusive.setUTCDate(endExclusive.getUTCDate() + 1)
+        createdAt.lt = endExclusive
+      }
+
+      where.createdAt = createdAt
     }
 
     const [total, logs] = await Promise.all([

@@ -4,10 +4,15 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 if (process.env['NODE_ENV'] !== 'production') {
-  const __dirname = fileURLToPath(new URL('.', import.meta.url))
-  const envPath = path.resolve(__dirname, '../../../.env')
+  const configDirectory = fileURLToPath(new URL('.', import.meta.url))
+  const projectRoot = path.resolve(configDirectory, '../../../')
 
-  dotenv.config({ path: envPath })
+  const envFile = process.env['NODE_ENV'] === 'test' ? '.env.test' : '.env'
+
+  dotenv.config({
+    path: path.join(projectRoot, envFile),
+    override: false,
+  })
 }
 
 const expiresInSchema = z.union([

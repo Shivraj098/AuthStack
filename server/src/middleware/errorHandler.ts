@@ -24,9 +24,32 @@ const isPlainValidationError = (
 ): err is { code: 'VALIDATION_ERROR'; fields?: Record<string, string[]> } => {
   return err != null && typeof err === 'object' && 'code' in err && err.code === 'VALIDATION_ERROR'
 }
+const isMalformedJsonError = (
+  err: unknown
+): err is SyntaxError & { status: number; type: string } => {
+  if (!(err instanceof SyntaxError)) {
+    return false
+  }
+
+  return (
+    'status' in err && err.status === 400 && 'type' in err && err.type === 'entity.parse.failed'
+  )
+}
 
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   const requestId = req.id ?? 'unknown'
+  if (isMalformedJsonError(err)) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_JSON',
+        message: 'Malformed JSON request body',
+        requestId,
+      },
+    } satisfies ErrorResponse)
+
+    return
+  }
 
   // 1. Raw ZodError (kept for any other places that might still throw it)
   if (err instanceof ZodError) {
@@ -51,7 +74,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return
   }
 
-  // 2. Plain validation error from validate.ts middleware ← THIS WAS MISSING
+  // 2. Plain validation error from validate.ts middleware
   if (isPlainValidationError(err)) {
     res.status(400).json({
       success: false,

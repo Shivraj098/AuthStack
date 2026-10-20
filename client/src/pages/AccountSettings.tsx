@@ -26,6 +26,7 @@ const changePasswordSchema = z
     newPassword: z
       .string()
       .min(8, 'At least 8 characters')
+      .max(128, 'Password must not exceed 128 characters')
       .regex(/[A-Z]/, 'One uppercase letter')
       .regex(/[a-z]/, 'One lowercase letter')
       .regex(/[0-9]/, 'One number')
@@ -327,13 +328,7 @@ export function AccountSettings() {
               Password changed successfully. Redirecting you to sign in...
             </Alert>
           ) : (
-            <form
-              onSubmit={() => {
-                handleSubmit(onPasswordSubmit)
-              }}
-              noValidate
-              className="space-y-4"
-            >
+            <form onSubmit={void handleSubmit(onPasswordSubmit)} noValidate className="space-y-4">
               <Input
                 {...register('currentPassword')}
                 type="password"

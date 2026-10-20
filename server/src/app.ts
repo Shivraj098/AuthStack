@@ -75,12 +75,14 @@ const healthCheckHandler = async (_req: express.Request, res: express.Response):
       database: 'connected',
       redis: 'connected',
     })
-  } catch (err) {
+  } catch (err: unknown) {
+    logger.error({ err }, 'Health check failed')
+
     res.status(503).json({
       status: 'degraded',
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
-      error: (err as Error).message,
+      error: 'Service unavailable',
     })
   }
 }
@@ -122,6 +124,7 @@ async function bootstrap(): Promise<void> {
       error: {
         code: 'NOT_FOUND',
         message: 'Route not found',
+        requestId: _req.id,
       },
     })
   })

@@ -29,3 +29,6 @@ npm-debug.log*
 # Docker volumes (if you use named local paths)
 postgres-data/
 redis-data/
+# Client-local Vite environment
+client/.env
+client/.env.local

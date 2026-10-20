@@ -45,7 +45,12 @@ export function validate<T extends ZodTypeAny = ZodTypeAny>(
         req.body = result.data
         break
       case 'query':
-        Object.assign(req.query, result.data)
+        Object.defineProperty(req, 'query', {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: result.data,
+        })
         break
       case 'params':
         req.params = result.data as Request['params']
