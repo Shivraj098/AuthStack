@@ -6,8 +6,12 @@ import { env } from '../config/env.js'
 import { z } from 'zod'
 import { validate } from '../middleware/validate.js'
 import { AuthenticationError } from '../utils/error.js'
-
+import { getAuthLimiter } from '../middleware/rateLimiter.js'
+import type { NextFunction } from 'express'
 const router = Router()
+const authLimiter = (req: Request, res: Response, next: NextFunction): void => {
+  getAuthLimiter()(req, res, next)
+}
 
 // ─── Zod Schemas ───────────────────────────────────────────────
 const codeSchema = z.object({
@@ -39,32 +43,37 @@ const success = <T = undefined>(data?: T, message?: string): SuccessResponse<T> 
 })
 
 // ─── Public route: Complete MFA after password login ───────────
-router.post('/complete', validate(completeMfaSchema), async (req: Request, res: Response) => {
-  const { mfaPendingToken, code } = req.body as CompleteMfaBody
+router.post(
+  '/complete',
+  authLimiter,
+  validate(completeMfaSchema),
+  async (req: Request, res: Response) => {
+    const { mfaPendingToken, code } = req.body as CompleteMfaBody
 
-  const meta: { ip?: string; userAgent?: string } = {}
-  if (req.ip) meta.ip = req.ip
-  const ua = req.headers['user-agent']
-  if (typeof ua === 'string' && ua) meta.userAgent = ua
+    const meta: { ip?: string; userAgent?: string } = {}
+    if (req.ip) meta.ip = req.ip
+    const ua = req.headers['user-agent']
+    if (typeof ua === 'string' && ua) meta.userAgent = ua
 
-  const result = await authService.completeMfaLogin(mfaPendingToken, code, meta)
+    const result = await authService.completeMfaLogin(mfaPendingToken, code, meta)
 
-  // Set refresh token as httpOnly cookie (consistent strategy)
-  res.cookie('refreshToken', result.refreshToken, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'none',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/api/auth',
-  })
-
-  res.json(
-    success({
-      accessToken: result.accessToken,
-      user: result.user,
+    // Set refresh token as httpOnly cookie (consistent strategy)
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/api/auth',
     })
-  )
-})
+
+    res.json(
+      success({
+        accessToken: result.accessToken,
+        user: result.user,
+      })
+    )
+  }
+)
 
 // ─── Protected routes ──────────────────────────────────────────
 router.use(requireAuth)
@@ -79,7 +88,7 @@ router.get('/status', async (req: Request, res: Response) => {
   res.json(success(status))
 })
 
-router.post('/setup', async (req: Request, res: Response) => {
+router.post('/setup', authLimiter, async (req: Request, res: Response) => {
   if (!req.user?.sub) {
     throw new AuthenticationError()
   }
@@ -88,24 +97,34 @@ router.post('/setup', async (req: Request, res: Response) => {
   res.json(success(setup))
 })
 
-router.post('/verify-setup', validate(codeSchema), async (req: Request, res: Response) => {
-  if (!req.user?.sub) {
-    throw new AuthenticationError()
+router.post(
+  '/verify-setup',
+  authLimiter,
+  validate(codeSchema),
+  async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new AuthenticationError()
+    }
+
+    const { code } = req.body as CodeBody
+    await mfaService.verifySetup(req.user.sub, code)
+    res.json(success(undefined, 'MFA enabled successfully'))
   }
+)
 
-  const { code } = req.body as CodeBody
-  await mfaService.verifySetup(req.user.sub, code)
-  res.json(success(undefined, 'MFA enabled successfully'))
-})
+router.post(
+  '/disable',
+  authLimiter,
+  validate(disableSchema),
+  async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new AuthenticationError()
+    }
 
-router.post('/disable', validate(disableSchema), async (req: Request, res: Response) => {
-  if (!req.user?.sub) {
-    throw new AuthenticationError()
+    const { password, code } = req.body as DisableBody
+    await mfaService.disable(req.user.sub, password, code)
+    res.json(success(undefined, 'MFA disabled'))
   }
-
-  const { password, code } = req.body as DisableBody
-  await mfaService.disable(req.user.sub, password, code)
-  res.json(success(undefined, 'MFA disabled'))
-})
+)
 
 export default router

@@ -7,7 +7,7 @@ import {
   verifyEmailSchema,
   resendVerificationSchema,
 } from '../validators/auth.schema.js'
-
+import { requireTrustedOrigin } from '../middleware/requireTrustedOrigin.js'
 import { requireAuth } from '../middleware/requireAuth.js'
 import {
   loginSchema,
@@ -79,6 +79,7 @@ router.post(
 
 router.get(
   '/verify-email',
+  authLimiter,
   validate(verifyEmailSchema, 'query'),
   authController.verifyEmail.bind(authController)
 )
@@ -127,7 +128,12 @@ router.post('/login', authLimiter, validate(loginSchema), authController.login.b
  *     summary: Refresh access token
  *     tags: [Authentication]
  */
-router.post('/refresh', authLimiter, authController.refresh.bind(authController))
+router.post(
+  '/refresh',
+  authLimiter,
+  requireTrustedOrigin,
+  authController.refresh.bind(authController)
+)
 
 /**
  * @swagger
@@ -136,7 +142,12 @@ router.post('/refresh', authLimiter, authController.refresh.bind(authController)
  *     summary: Logout user
  *     tags: [Authentication]
  */
-router.post('/logout', authController.logout.bind(authController))
+router.post(
+  '/logout',
+  authLimiter,
+  requireTrustedOrigin,
+  authController.logout.bind(authController)
+)
 
 router.post('/logout-all', requireAuth, authController.logoutAll.bind(authController))
 

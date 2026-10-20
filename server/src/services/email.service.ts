@@ -1,18 +1,46 @@
 import { Resend } from 'resend'
 import { env } from '../config/env.js'
+import { AppError } from '../utils/error.js'
 
+type OutboundEmail = {
+  from: string
+  to: string[]
+  subject: string
+  text: string
+  html: string
+}
+
+function escapeHtml(value: string): string {
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }
+
+  return value.replace(/[&<>"']/g, (character) => entities[character] ?? character)
+}
 class EmailService {
   private resend = new Resend(env.RESEND_API_KEY)
+  private async sendEmail(payload: OutboundEmail): Promise<void> {
+    const result = await this.resend.emails.send(payload)
+
+    if (result.error) {
+      throw new AppError('Email delivery failed', 503, 'EMAIL_DELIVERY_FAILED', false)
+    }
+  }
 
   async sendVerificationEmail(to: string, token: string, firstName?: string): Promise<void> {
     const verifyUrl = `${env.CLIENT_URL}/verify-email?token=${token}`
     const name = firstName ?? 'there'
+    const safeName = escapeHtml(name)
 
-    await this.resend.emails.send({
+    await this.sendEmail({
       from: env.EMAIL_FROM,
       to: [to],
       subject: 'Verify your email address',
-      text: `Hi ${name}, verify your email: ${verifyUrl} (expires in 24 hours)`,
+      text: `Hi ${safeName}, verify your email: ${verifyUrl} (expires in 24 hours)`,
       html: `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
       <h2>Verify your email</h2>
@@ -56,7 +84,7 @@ class EmailService {
     const resetUrl = `${env.CLIENT_URL}/reset-password?token=${token}`
     const name = firstName ?? 'there'
 
-    await this.resend.emails.send({
+    await this.sendEmail({
       from: env.EMAIL_FROM,
       to: [to],
       subject: 'Reset your password',

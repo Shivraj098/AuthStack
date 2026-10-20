@@ -70,6 +70,9 @@ class OAuthService {
   // Step 1: Generate the authorization URL the user is redirected to
   async getAuthorizationUrl(provider: OAuthProvider): Promise<string> {
     const config = providers[provider]
+    if (!config.clientId || !config.clientSecret) {
+      throw new AppError('OAuth provider is not configured', 503, 'OAUTH_NOT_CONFIGURED')
+    }
 
     // PKCE: generate verifier and challenge pair
     const codeVerifier = generateCodeVerifier()
@@ -247,6 +250,7 @@ class OAuthService {
         config.tokenUrl,
         params.toString(),
         {
+          timeout: 10_000,
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             Accept: 'application/json',
@@ -296,6 +300,7 @@ class OAuthService {
       family_name?: string
       picture?: string
     }>(userInfoUrl, {
+      timeout: 10_000,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
 
@@ -327,6 +332,7 @@ class OAuthService {
         avatar_url?: string
         email?: string
       }>('https://api.github.com/user', {
+        timeout: 10_000,
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: 'application/vnd.github+json',
@@ -339,6 +345,7 @@ class OAuthService {
           verified: boolean
         }>
       >('https://api.github.com/user/emails', {
+        timeout: 10_000,
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: 'application/vnd.github+json',

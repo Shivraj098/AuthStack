@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 import { env } from './env.js'
-
+import { logger } from './logger.js'
 // Create a PostgreSQL connection pool
 // Pool manages multiple connections — more efficient
 // than opening a new connection per query
@@ -12,6 +12,9 @@ const pool = new pg.Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
+})
+pool.on('error', (error: Error) => {
+  logger.error({ err: error }, 'Unexpected PostgreSQL pool error')
 })
 
 // Prisma 7 adapter

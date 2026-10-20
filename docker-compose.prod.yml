@@ -53,8 +53,8 @@ services:
 
   server:
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
       target: production
     container_name: auth_server_prod
     restart: always
@@ -80,6 +80,8 @@ services:
     networks:
       - auth_internal
     depends_on:
+    
+    
       postgres:
         condition: service_healthy
       redis:
@@ -99,8 +101,8 @@ services:
 
   client:
     build:
-      context: ./client
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: client/Dockerfile
       target: production
     container_name: auth_client_prod
     restart: always
@@ -121,7 +123,21 @@ services:
       resources:
         limits:
           memory: 128M
-
+migrate:
+  build:
+    context: .
+    dockerfile: server/Dockerfile
+    target: migration
+  container_name: auth_migrate_prod
+  restart: "no"
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  networks:
+    - auth_internal
+  depends_on:
+    postgres:
+      condition: service_healthy
 volumes:
   postgres_prod_data:
     driver: local

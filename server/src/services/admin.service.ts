@@ -44,7 +44,14 @@ class AdminService {
             select: { role: { select: { name: true } } },
           },
           _count: {
-            select: { refreshTokens: true },
+            select: {
+              refreshTokens: {
+                where: {
+                  revokedAt: null,
+                  expiresAt: { gt: new Date() },
+                },
+              },
+            },
           },
         },
       }),
@@ -92,7 +99,12 @@ class AdminService {
         },
         _count: {
           select: {
-            refreshTokens: true,
+            refreshTokens: {
+              where: {
+                revokedAt: null,
+                expiresAt: { gt: new Date() },
+              },
+            },
             auditLogs: true,
           },
         },

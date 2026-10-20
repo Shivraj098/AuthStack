@@ -155,7 +155,7 @@ class AuthController {
     res.cookie('refreshToken', token, {
       httpOnly: true, // JavaScript cannot read this cookie
       secure: env.NODE_ENV === 'production', // HTTPS only in production
-      sameSite: 'none', // Allow cross-site requests (for mobile apps, etc.)
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
       path: '/api/auth', // Cookie only sent to auth routes, not every request
     })
@@ -165,7 +165,7 @@ class AuthController {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
-      sameSite: 'none',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
       path: '/api/auth',
     })
   }

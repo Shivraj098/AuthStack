@@ -237,7 +237,11 @@ class AuthService {
       },
     })
 
-    await emailService.sendVerificationEmail(email, plain, user.firstName ?? undefined)
+    try {
+      await emailService.sendVerificationEmail(email, plain, user.firstName ?? undefined)
+    } catch (error: unknown) {
+      logger.error({ err: error, userId: user.id }, 'Verification email delivery failed')
+    }
 
     return { message: RESEND_SAME_MESSAGE }
   }
@@ -444,7 +448,11 @@ class AuthService {
       })
     })
 
-    await emailService.sendPasswordResetEmail(email, plain, user.firstName ?? undefined)
+    try {
+      await emailService.sendPasswordResetEmail(email, plain, user.firstName ?? undefined)
+    } catch (error: unknown) {
+      logger.error({ err: error, userId: user.id }, 'Password-reset email delivery failed')
+    }
 
     await prisma.auditLog.create({
       data: {

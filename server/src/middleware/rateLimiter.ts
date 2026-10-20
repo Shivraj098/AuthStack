@@ -2,7 +2,7 @@ import rateLimit, { RateLimitRequestHandler, Options, ipKeyGenerator } from 'exp
 import { RedisStore, type RedisReply } from 'rate-limit-redis'
 import { redisClient } from '../config/redis.js'
 import { RateLimitError } from '../utils/error.js'
-import type { Request, Response } from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import { logger } from '../config/logger.js'
 
 /**
@@ -31,34 +31,56 @@ function makeRateLimiter(
   prefix: string,
   options?: Partial<Options>
 ): RateLimitRequestHandler {
-  // ── This is the exact signature expected by rate-limit-redis@4.3.1
   const sendCommand = (...args: string[]): Promise<RedisReply> => {
-    // Targeted type assertion – resolves the known redis@5 ReplyUnion incompatibility
     return redisClient.sendCommand(args)
   }
 
-  return rateLimit({
+  const commonOptions: Partial<Options> = {
     windowMs,
     max,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: (req: Request): string => ipKeyGenerator(req.ip || 'unknown'),
+    handler: rateLimitHandler,
+    ...options,
+  }
 
+  const redisLimiter = rateLimit({
+    ...commonOptions,
     store: new RedisStore({
       sendCommand,
       prefix,
     }),
-
-    keyGenerator: (req: Request): string => ipKeyGenerator(req.ip || 'unknown'),
-
-    // Graceful degradation if Redis becomes unavailable
-    skip: (): boolean => !redisClient.isReady,
-
-    handler: rateLimitHandler,
-
-    ...options,
   })
-}
 
+  // Local, in-process fallback. It protects this instance during
+  // Redis outages but does not share counts across server instances.
+  const fallbackLimiter = rateLimit(commonOptions)
+
+  return Object.assign(
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (redisClient.isReady) {
+        redisLimiter(req, res, next)
+        return
+      }
+
+      logger.warn(
+        { requestId: req.id, ip: req.ip, prefix },
+        'Redis unavailable; using process-local rate limiting'
+      )
+
+      fallbackLimiter(req, res, next)
+    },
+    {
+      resetKey: (key: string): void => {
+        redisLimiter.resetKey(key)
+        fallbackLimiter.resetKey(key)
+      },
+      getKey: (key: string) =>
+        redisClient.isReady ? redisLimiter.getKey(key) : fallbackLimiter.getKey(key),
+    }
+  )
+}
 /**
  * Lazy singleton pattern (your original excellent architecture – unchanged)
  */

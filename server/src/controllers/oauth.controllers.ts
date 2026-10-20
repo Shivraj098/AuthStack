@@ -22,6 +22,11 @@ class OAuthController {
   // Handles the redirect back from the provider
   async callback(req: Request, res: Response): Promise<void> {
     const provider = req.params['provider'] as OAuthProvider
+
+    if (!VALID_PROVIDERS.includes(provider)) {
+      res.redirect(`${env.CLIENT_URL}/login?error=oauth_invalid_provider`)
+      return
+    }
     const { code, state, error } = req.query as Record<string, string>
 
     // User denied access on the provider's page
@@ -52,7 +57,7 @@ class OAuthController {
     res.cookie('refreshToken', result.refreshToken, {
       httpOnly: true,
       secure: env.NODE_ENV === 'production',
-      sameSite: 'none',
+      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/api/auth',
     })
